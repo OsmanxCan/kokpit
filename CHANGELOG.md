@@ -3,6 +3,21 @@
 Bu dosyadaki her `## [sürüm]` bölümü, GitHub Release notu olarak otomatik kullanılır.
 Biçim: [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/), sürümleme: [SemVer](https://semver.org/lang/tr/).
 
+## [0.2.0] - 2026-11-24
+
+### Eklendi
+- **Ayarlar sayfası:** Telegram bağlantısı, uyarı eşikleri, izlenen servisler, oturum ve güncelleme ayarları artık panelden yapılıyor; terminale gerek yok
+- **Mesaj şablonları:** 16 bildirim türünün her biri ayrı ayrı açılıp kapatılabiliyor, bekleme süresi ve mesaj şablonu düzenlenebiliyor. Değişkenler (`{{servis}}`, `{{ip}}`…), kalın/italik biçim ve Telegram görünümünde canlı önizleme
+- **Hesap:** Şifre değiştirme ve 2FA'yı yeniden kurma (QR panelde görünür)
+- **Kullanıcılar:** Panelden kullanıcı ekleme ve silme
+- Açık / koyu / sistem teması
+- Kenar çubuğu daraltılabiliyor (sol üstteki düğme veya Ctrl+B); tercih hatırlanıyor
+
+### Değişti
+- Arayüz shadcn/ui tarzında yeniden tasarlandı (dashboard-01 düzeni: inset kenar çubuğu, bölüm kartları, etkileşimli kaynak grafiği); yazı tipi Geist
+- Bildirim şablonu düzenleyicisi Command penceresi düzeninde; küçük ekranlarda kaydırılabiliyor
+- `config.env`'deki Telegram, eşik ve servis ayarları ilk açılışta panele aktarılır, sonrasında panelden yönetilir
+
 ## [0.1.2] - 2026-11-24
 
 ### Düzeltildi

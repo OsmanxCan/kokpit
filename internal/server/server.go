@@ -20,6 +20,7 @@ import (
 	"github.com/OsmanxCan/kokpit/internal/nginx"
 	"github.com/OsmanxCan/kokpit/internal/security"
 	"github.com/OsmanxCan/kokpit/internal/services"
+	"github.com/OsmanxCan/kokpit/internal/settings"
 	"github.com/OsmanxCan/kokpit/internal/store"
 	"github.com/OsmanxCan/kokpit/internal/system"
 	"github.com/OsmanxCan/kokpit/internal/update"
@@ -28,6 +29,7 @@ import (
 type Server struct {
 	cfg    *config.Config
 	st     *store.Store
+	set    *settings.Store
 	sys    *system.Collector
 	svc    *services.Manager
 	sec    *security.Analyzer
@@ -36,9 +38,9 @@ type Server struct {
 	webFS  fs.FS
 }
 
-func New(cfg *config.Config, st *store.Store, sys *system.Collector, svc *services.Manager,
+func New(cfg *config.Config, st *store.Store, set *settings.Store, sys *system.Collector, svc *services.Manager,
 	sec *security.Analyzer, al *alerts.Engine, upd *update.Checker, web fs.FS) *Server {
-	return &Server{cfg, st, sys, svc, sec, al, upd, web}
+	return &Server{cfg, st, set, sys, svc, sec, al, upd, web}
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
@@ -99,6 +101,20 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/alerts", a(s.handleAlerts))
 	mux.HandleFunc("POST /api/alerts/test", a(s.handleAlertTest))
 	mux.HandleFunc("GET /api/audit", a(s.handleAudit))
+
+	mux.HandleFunc("GET /api/settings", a(s.handleSettingsGet))
+	mux.HandleFunc("PUT /api/settings", a(s.handleSettingsPut))
+	mux.HandleFunc("GET /api/settings/events", a(s.handleEvents))
+	mux.HandleFunc("POST /api/settings/preview", a(s.handlePreview))
+	mux.HandleFunc("POST /api/settings/telegram/test", a(s.handleTelegramTest))
+	mux.HandleFunc("POST /api/settings/events/{id}/test", a(s.handleEventTest))
+	mux.HandleFunc("GET /api/settings/services", a(s.handleAllServices))
+
+	mux.HandleFunc("GET /api/users", a(s.handleUsers))
+	mux.HandleFunc("POST /api/users/2fa", a(s.handleNew2FA))
+	mux.HandleFunc("POST /api/users", a(s.handleUserSave))
+	mux.HandleFunc("DELETE /api/users/{name}", a(s.handleUserDelete))
+	mux.HandleFunc("POST /api/account/password", a(s.handlePassword))
 
 	mux.HandleFunc("GET /api/update", a(s.handleUpdateStatus))
 	mux.HandleFunc("POST /api/update/check", a(s.handleUpdateCheck))
@@ -440,8 +456,8 @@ func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAlertTest(w http.ResponseWriter, r *http.Request) {
-	if err := s.alerts.Test(); err != nil {
-		writeErr(w, 500, err.Error())
+	if err := s.alerts.SendTest("test", ""); err != nil {
+		writeErr(w, 400, err.Error())
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true})
@@ -471,7 +487,7 @@ func (s *Server) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	s.alerts.Fire("ok", "guncelleme", "upd"+ver, "Panel güncellendi: "+from+" → "+ver, time.Minute)
+	s.alerts.Fire("update_done", ver, map[string]string{"eski": from, "yeni": ver})
 	s.st.Flush()
 	writeJSON(w, map[string]any{"ok": true, "version": ver})
 	if f, ok := w.(http.Flusher); ok {

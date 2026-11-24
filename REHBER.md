@@ -44,7 +44,7 @@ Kurulum sırasında panel kullanıcısını oluşturursun:
 
 Kurulumdan sonra panel `http://127.0.0.1:3100` adresinde çalışır. Bu adrese sadece sunucunun içinden erişilebilir.
 
-**Şifreni veya telefonunu kaybedersen** sunucuda tekrar çalıştır. Eski oturumlar kapanır:
+**Şifreni değiştirmek veya 2FA'yı yeniden kurmak** için panelde **Ayarlar → Hesabım** sayfasını kullan. **Panele giremiyorsan** (şifreni veya telefonunu kaybettiysen) sunucuda şunu çalıştır; eski oturumlar kapanır:
 
 ```bash
 sudo kokpit kullanici-ekle
@@ -116,41 +116,48 @@ Artık panel adresini açınca önce Cloudflare e-postana bir kod gönderir, ard
 
 ## 6. Telegram bildirimleri
 
-1. Telegram'da **@BotFather** → `/newbot` → bir ad ver → **token**'ı kopyala
-2. Yeni botuna herhangi bir mesaj gönder
-3. Tarayıcıda `https://api.telegram.org/bot<TOKEN>/getUpdates` adresini aç → `"chat":{"id":123456789` → bu sayı **chat id**
-4. `/etc/kokpit/config.env` dosyasına yaz:
-   ```
-   TELEGRAM_TOKEN=123456:ABC...
-   TELEGRAM_CHAT_ID=123456789
-   ```
-5. `sudo systemctl restart kokpit` → panelde **Bildirimler → Test bildirimi gönder**
+Panelde **Ayarlar → Telegram** sayfasını aç. Sayfadaki adımları izle:
 
-| Seviye | Durum |
+1. Telegram'da **@BotFather** → `/newbot` → bota bir ad ver → verdiği **token**'ın tamamını kopyala
+2. Botunun sayfasını açıp **Başlat**'a bas
+3. **@userinfobot**'a `/start` yaz → gelen **Id** senin chat id'n
+4. Token ve chat id'yi gir → **Test mesajı gönder** → **Kaydet**
+
+Hangi olayların bildirileceğini, tekrar bekleme sürelerini ve mesaj şablonlarını **Ayarlar → Bildirimler** sayfasından değiştirebilirsin. Şablonlarda `{{servis}}`, `{{ip}}`, `{{sunucu}}` gibi değişkenler ve `<b>kalın</b>`, `<i>italik</i>`, `<code>kod</code>` biçimleri kullanılabilir.
+
+| Varsayılan seviye | Olay |
 |---|---|
-| 🔴 | PM2 süreci veya izlenen servis çöktü · disk %90'ı geçti · **daha önce görülmemiş IP'den SSH girişi** |
-| 🟡 | CPU/RAM 3 dakikadır yüksek · Docker container durdu · dakikada 30+ başarısız SSH denemesi · panele 3+ hatalı giriş |
-| 🔵 | Panele giriş yapıldı · yeni panel sürümü yayında |
-| 🟢 | Çöken süreç tekrar ayağa kalktı · panel güncellendi |
-
-Aynı uyarı tekrar tekrar gönderilmez, her türün bir bekleme süresi var.
+| 🔴 Kritik | PM2 süreci veya izlenen servis çöktü · disk doluyor · **daha önce görülmemiş IP'den SSH girişi** |
+| 🟡 Uyarı | CPU/RAM uzun süre yüksek · Docker container durdu · yoğun SSH saldırısı · panele hatalı giriş |
+| 🔵 Bilgi | SSH girişi · panele giriş · yeni Kokpit sürümü |
+| 🟢 Düzeldi | Çöken süreç tekrar çalışıyor · Kokpit başladı · güncelleme kuruldu |
 
 ## 7. Ayarlar
 
-`/etc/kokpit/config.env`. Değişiklikten sonra `sudo systemctl restart kokpit`.
+Günlük ayarların hepsi panelde **Ayarlar** sayfasında:
+
+| Sekme | İçerik |
+|---|---|
+| Genel | CPU / RAM / disk eşikleri, SSH saldırı eşiği, oturumu IP'ye bağlama, güncelleme kontrolü |
+| Telegram | Bot token, chat id, bağlantı testi |
+| Bildirimler | Her olayı aç/kapa, bekleme süresi, mesaj şablonu ve önizleme |
+| İzlenen servisler | Çökünce bildirim gönderilecek systemd servisleri |
+| Hesabım | Şifre değiştirme, 2FA'yı yeniden kurma |
+| Kullanıcılar | Kullanıcı ekleme ve silme |
+
+Panelden yapılan ayarlar `/var/lib/kokpit/settings.json` dosyasında saklanır.
+
+`/etc/kokpit/config.env` sadece sunucu düzeyindeki ayarlar içindir. Değiştirdikten sonra `sudo systemctl restart kokpit` çalıştır.
 
 | Değişken | Varsayılan | Açıklama |
 |---|---|---|
 | `PANEL_ADDR` | `127.0.0.1:3100` | Dinlenen adres. **Dışarıya açma.** |
-| `PANEL_DATA` | `/var/lib/kokpit` | Kullanıcılar, oturumlar, metrik geçmişi |
-| `PANEL_SESSION_IP_BIND` | `true` | Oturumu IP'ye bağla (IP değişirse tekrar giriş ister) |
+| `PANEL_DATA` | `/var/lib/kokpit` | Kullanıcılar, oturumlar, ayarlar, metrik geçmişi |
 | `PANEL_PM2_BIN` | otomatik | pm2 yolu (nvm kurulumları otomatik bulunur) |
 | `PM2_HOME` | — | PM2 ana klasörü, örn. `/root/.pm2` |
-| `PANEL_WATCH_SERVICES` | `nginx,ssh,docker,cloudflared,fail2ban,pm2-root` | Çökerse bildirim gönderilecek servisler |
-| `PANEL_UPDATE_CHECK` | `true` | GitHub'dan sürüm kontrolü |
 | `PANEL_REPO` | derlemeden gelir | Güncellemelerin alınacağı depo (fork'lar için) |
-| `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` | — | Telegram bildirimleri |
-| `ALERT_CPU`, `ALERT_RAM`, `ALERT_DISK` | `90` | Uyarı eşikleri (%) |
+
+`TELEGRAM_*`, `ALERT_*`, `PANEL_WATCH_SERVICES`, `PANEL_SESSION_IP_BIND` ve `PANEL_UPDATE_CHECK` değişkenleri sadece ilk açılışta panele aktarılır.
 
 ## 8. Sık karşılaşılan durumlar
 
@@ -161,7 +168,7 @@ sudo journalctl -u kokpit -n 50
 curl -I http://127.0.0.1:3100       # sunucunun içinden
 ```
 
-**"Oturum yok" diyip sürekli girişe atıyor.** Mobil veride IP sık değişiyor olabilir. `PANEL_SESSION_IP_BIND=false` yap.
+**"Oturum yok" diyip sürekli girişe atıyor.** Mobil veride IP sık değişiyor olabilir. **Ayarlar → Genel** sayfasında "Oturumu IP adresine bağla" seçeneğini kapat.
 
 **Güncelleme sonrası panel açılmadı.** Eski sürüm `/usr/local/bin/kokpit.eski` olarak saklanır:
 ```bash

@@ -93,5 +93,26 @@ export interface UpdateStatus {
 
 export interface Me {
   username: string; hostname: string; ip: string; telegram: boolean
-  version: string; updateAvailable: boolean; latestVersion: string
+  version: string; updateAvailable: boolean; latestVersion: string; repo: string
 }
+
+// ---- ayarlar ----
+
+export interface EventSetting { enabled: boolean; telegram: boolean; cooldown: number; template: string }
+export interface Thresholds { cpu: number; cpuMinutes: number; ram: number; ramMinutes: number; disk: number; sshBrute: number }
+export interface SettingsT {
+  telegram: { token: string; chatId: string; prefix: boolean }
+  thresholds: Thresholds
+  events: Record<string, EventSetting>
+  watchServices: string[]
+  sessionIpBind: boolean
+  updateCheck: boolean
+  tokenSet: boolean
+  tokenMasked: string
+}
+export interface VarDef { name: string; desc: string; sample: string }
+export interface EventDef {
+  id: string; group: string; name: string; desc: string; level: string
+  defaultOn: boolean; defaultCooldown: number; defaultTemplate: string; vars: VarDef[]
+}
+export interface UserT { username: string; createdAt: number; updatedAt: number }

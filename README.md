@@ -16,6 +16,9 @@ Sunucunun durumunu, çalışan projelerini ve güvenliğini tek ekrandan izler; 
 <p align="center">
   <img src="docs/ekran/guvenlik.png" alt="Güvenlik ekranı" width="820">
 </p>
+<p align="center">
+  <img src="docs/ekran/sablon.png" alt="Bildirim şablonu düzenleyici" width="820">
+</p>
 
 ## Özellikler
 
@@ -25,7 +28,8 @@ Sunucunun durumunu, çalışan projelerini ve güvenliğini tek ekrandan izler; 
 | **Projeler** | PM2 süreçleri, Docker container'ları, systemd servisleri · başlat / durdur / yeniden başlat · canlı log (arama, duraklatma) |
 | **Siteler** | Nginx domainleri ve yönlendikleri port · SSL bitiş tarihleri · yanıt süresi kontrolü · `nginx -t` ve reload |
 | **Güvenlik** | 0–100 güvenlik skoru ve çözüm önerileri · SSH saldırıları ve başarılı girişler · açık portlar · UFW · fail2ban ile IP engelleme · bekleyen güncellemeler |
-| **Bildirimler** | Telegram: servis çöktü, disk doluyor, CPU/RAM yüksek, **yeni IP'den SSH girişi**, panele hatalı giriş, yeni sürüm |
+| **Bildirimler** | Telegram: servis çöktü, disk doluyor, CPU/RAM yüksek, **yeni IP'den SSH girişi**, panele hatalı giriş, yeni sürüm · her olay için düzenlenebilir mesaj şablonu ve canlı önizleme |
+| **Ayarlar** | Her şey panelden: Telegram, eşikler, izlenen servisler, şifre ve 2FA, kullanıcılar · açık/koyu tema |
 | **Kayıtlar** | Panelde yapılan her işlem (kim, ne zaman, hangi IP) · açık oturumlar |
 
 ## Güvenlik modeli

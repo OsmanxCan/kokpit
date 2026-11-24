@@ -33,8 +33,9 @@ type Item struct {
 }
 
 type Manager struct {
-	cfg    *config.Config
-	pm2Bin string
+	cfg     *config.Config
+	pm2Bin  string
+	Watched func() map[string]bool // izlenen servisler (ayarlardan)
 }
 
 func New(cfg *config.Config) *Manager {
@@ -244,8 +245,8 @@ func (m *Manager) Systemd(all bool) ([]Item, error) {
 		return nil, err
 	}
 	watch := map[string]bool{}
-	for _, w := range m.cfg.WatchServices {
-		watch[strings.TrimSuffix(w, ".service")] = true
+	if m.Watched != nil {
+		watch = m.Watched()
 	}
 	items := []Item{}
 	for _, u := range units {

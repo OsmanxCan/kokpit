@@ -69,16 +69,31 @@ func New(current, repo string, enabled bool) *Checker {
 
 // Start 6 saatte bir sürüm kontrolü yapar.
 func (c *Checker) Start() {
-	if !c.Enabled || c.Repo == "" {
+	if c.Repo == "" {
 		return
 	}
 	go func() {
 		time.Sleep(30 * time.Second)
 		for {
-			c.Check()
+			if c.IsEnabled() {
+				c.Check()
+			}
 			time.Sleep(6 * time.Hour)
 		}
 	}()
+}
+
+// SetEnabled otomatik kontrolü açar/kapatır (ayarlar sayfasından).
+func (c *Checker) SetEnabled(v bool) {
+	c.mu.Lock()
+	c.Enabled = v
+	c.mu.Unlock()
+}
+
+func (c *Checker) IsEnabled() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Enabled
 }
 
 func (c *Checker) Status() Status {

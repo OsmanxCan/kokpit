@@ -88,27 +88,16 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.st.AddFail(ip)
 		s.st.Audit(username, ip, "giris", "panel", false, "hatalı şifre veya 2FA")
 		if n+1 >= 3 {
-			s.alerts.Fire("warning", "panel", "loginfail"+ip, "Panele hatalı giriş denemesi: IP "+ip+" ("+itoa(n+1)+" deneme)", 10*time.Minute)
+			s.alerts.Fire("panel_login_fail", ip, map[string]string{"ip": ip, "sayi": itoa(n + 1), "kullanici": username})
 		}
 		time.Sleep(700 * time.Millisecond)
 		writeErr(w, 401, "Kullanıcı adı, şifre veya 2FA kodu hatalı")
 		return
 	}
 	s.st.ClearFails(ip)
-	raw := make([]byte, 32)
-	rand.Read(raw)
-	token := hex.EncodeToString(raw)
-	now := store.Now()
-	ua := r.UserAgent()
-	if len(ua) > 300 {
-		ua = ua[:300]
-	}
-	s.st.AddSession(store.Session{TokenHash: hashToken(token), Username: username, IP: ip, UA: ua,
-		CreatedAt: now, LastSeen: now, ExpiresAt: now + int64(sessionMax.Seconds())})
-	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: token, Path: "/", HttpOnly: true, Secure: !s.cfg.Dev,
-		SameSite: http.SameSiteStrictMode, MaxAge: int(sessionMax.Seconds())})
-	s.st.Audit(username, ip, "giris", "panel", true, ua)
-	s.alerts.Fire("info", "panel", "login"+ip, "Panele giriş yapıldı: "+username+" @ "+ip, 30*time.Minute)
+	s.issueSession(w, r, username)
+	s.st.Audit(username, ip, "giris", "panel", true, r.UserAgent())
+	s.alerts.Fire("panel_login", ip+username, map[string]string{"kullanici": username, "ip": ip})
 	writeJSON(w, map[string]any{"ok": true, "username": username})
 }
 
@@ -123,7 +112,7 @@ func (s *Server) session(r *http.Request) (*sessionInfo, bool) {
 		return nil, false
 	}
 	now := store.Now()
-	if now > x.ExpiresAt || now-x.LastSeen > int64(sessionIdle.Seconds()) || (s.cfg.SessionIPBind && x.IP != clientIP(r)) {
+	if now > x.ExpiresAt || now-x.LastSeen > int64(sessionIdle.Seconds()) || (s.set.Get().SessionIPBind && x.IP != clientIP(r)) {
 		s.st.DeleteSession(th)
 		return nil, false
 	}
@@ -173,7 +162,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	si := sess(r)
 	us := s.upd.Status()
 	writeJSON(w, map[string]any{"username": si.Username, "ip": clientIP(r), "telegram": s.alerts.TelegramReady(),
-		"hostname": s.sys.Latest().Hostname, "version": us.Current, "updateAvailable": us.Available,
+		"hostname": s.sys.Latest().Hostname, "version": us.Current, "repo": us.Repo, "updateAvailable": us.Available,
 		"latestVersion": func() string {
 			if us.Latest != nil {
 				return us.Latest.Version
@@ -206,4 +195,20 @@ func (s *Server) handleKillSessions(w http.ResponseWriter, r *http.Request) {
 	n := s.st.DeleteSessionsExcept(si.TokenH)
 	s.st.Audit(si.Username, clientIP(r), "oturumlari-kapat", "panel", true, itoa(n)+" oturum")
 	writeJSON(w, map[string]any{"ok": true, "closed": n})
+}
+
+// issueSession yeni bir oturum açar ve çerezini yazar.
+func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, username string) {
+	raw := make([]byte, 32)
+	rand.Read(raw)
+	token := hex.EncodeToString(raw)
+	now := store.Now()
+	ua := r.UserAgent()
+	if len(ua) > 300 {
+		ua = ua[:300]
+	}
+	s.st.AddSession(store.Session{TokenHash: hashToken(token), Username: username, IP: clientIP(r), UA: ua,
+		CreatedAt: now, LastSeen: now, ExpiresAt: now + int64(sessionMax.Seconds())})
+	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: token, Path: "/", HttpOnly: true, Secure: !s.cfg.Dev,
+		SameSite: http.SameSiteStrictMode, MaxAge: int(sessionMax.Seconds())})
 }

@@ -42,7 +42,7 @@ export function daysLeft(unix: number): number {
 
 // Durum rengi: yeşil < sarı eşiği < amber < kırmızı eşiği
 export function levelColor(v: number, warn = 70, crit = 90): string {
-  if (v >= crit) return 'var(--color-kirmizi)'
-  if (v >= warn) return 'var(--color-amber)'
-  return 'var(--color-yesil)'
+  if (v >= crit) return 'var(--destructive)'
+  if (v >= warn) return 'var(--warning)'
+  return 'var(--success)'
 }

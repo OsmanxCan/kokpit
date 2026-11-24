@@ -41,22 +41,22 @@ export function System() {
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title={<span>İşlemci <span className="text-soluk font-normal">{pct(s.cpu, 1)} · yük {s.load1.toFixed(2)} / {s.load5.toFixed(2)} / {s.load15.toFixed(2)}</span></span>}>
+        <Panel title={<span>İşlemci <span className="text-muted-foreground font-normal">{pct(s.cpu, 1)} · yük {s.load1.toFixed(2)} / {s.load5.toFixed(2)} / {s.load15.toFixed(2)}</span></span>}>
           <AreaChart times={times} max={100} format={(v) => pct(v, 1)}
-            series={[{ key: 'cpu', label: 'CPU', color: 'var(--color-amber)', values: pts.map((p) => p.cpu) }]} />
+            series={[{ key: 'cpu', label: 'CPU', color: 'var(--warning)', values: pts.map((p) => p.cpu) }]} />
         </Panel>
-        <Panel title={<span>Bellek <span className="text-soluk font-normal">{bytes(s.memUsed)} / {bytes(s.memTotal)} · swap {bytes(s.swapUsed)}</span></span>}>
+        <Panel title={<span>Bellek <span className="text-muted-foreground font-normal">{bytes(s.memUsed)} / {bytes(s.memTotal)} · swap {bytes(s.swapUsed)}</span></span>}>
           <AreaChart times={times} max={100} format={(v) => pct(v, 1)}
             series={[
-              { key: 'mem', label: 'RAM', color: 'var(--color-yesil)', values: pts.map((p) => p.mem) },
-              { key: 'swap', label: 'Swap', color: 'var(--color-mavi)', values: pts.map((p) => p.swap) },
+              { key: 'mem', label: 'RAM', color: 'var(--success)', values: pts.map((p) => p.mem) },
+              { key: 'swap', label: 'Swap', color: 'var(--info)', values: pts.map((p) => p.swap) },
             ]} />
         </Panel>
-        <Panel title={<span>Ağ <span className="text-soluk font-normal">↓ {rate(s.rx)} · ↑ {rate(s.tx)} · toplam ↓ {bytes(s.rxTotal)} ↑ {bytes(s.txTotal)}</span></span>}>
+        <Panel title={<span>Ağ <span className="text-muted-foreground font-normal">↓ {rate(s.rx)} · ↑ {rate(s.tx)} · toplam ↓ {bytes(s.rxTotal)} ↑ {bytes(s.txTotal)}</span></span>}>
           <AreaChart times={times} format={rate}
             series={[
-              { key: 'rx', label: 'Gelen', color: 'var(--color-mavi)', values: pts.map((p) => p.rx) },
-              { key: 'tx', label: 'Giden', color: 'var(--color-amber)', values: pts.map((p) => p.tx) },
+              { key: 'rx', label: 'Gelen', color: 'var(--info)', values: pts.map((p) => p.rx) },
+              { key: 'tx', label: 'Giden', color: 'var(--warning)', values: pts.map((p) => p.tx) },
             ]} />
         </Panel>
         <Panel title="Diskler ve sıcaklık">
@@ -64,16 +64,16 @@ export function System() {
             {(s.disks ?? []).map((d) => (
               <li key={d.mount}>
                 <div className="flex justify-between text-sm mb-1">
-                  <span>{d.mount} <span className="text-soluk">{d.device} · {d.fstype}</span></span>
-                  <span style={{ color: levelColor(d.percent, 75, 90) }}>{pct(d.percent)} <span className="text-soluk">({bytes(d.used)} / {bytes(d.total)})</span></span>
+                  <span>{d.mount} <span className="text-muted-foreground">{d.device} · {d.fstype}</span></span>
+                  <span style={{ color: levelColor(d.percent, 75, 90) }}>{pct(d.percent)} <span className="text-muted-foreground">({bytes(d.used)} / {bytes(d.total)})</span></span>
                 </div>
                 <Bar value={d.percent} color={levelColor(d.percent, 75, 90)} />
               </li>
             ))}
           </ul>
-          <div className="mt-4 pt-3 border-t border-cizgi">
+          <div className="mt-4 pt-3 border-t border-border">
             {(s.temps ?? []).length === 0 ? (
-              <div className="text-sm text-soluk">Sıcaklık sensörü yok (sanal sunucularda normaldir).</div>
+              <div className="text-sm text-muted-foreground">Sıcaklık sensörü yok (sanal sunucularda normaldir).</div>
             ) : (
               <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
                 {s.temps!.map((t, i) => (
@@ -89,8 +89,8 @@ export function System() {
         {(s.procs ?? []).length === 0 ? <Empty>Veri toplanıyor…</Empty> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="text-soluk text-left">
-                <tr className="border-b border-cizgi">
+              <thead className="text-muted-foreground text-left">
+                <tr className="border-b border-border">
                   <th className="font-normal px-4 py-2">Süreç</th>
                   <th className="font-normal px-2 py-2">PID</th>
                   <th className="font-normal px-2 py-2">Kullanıcı</th>
@@ -101,13 +101,13 @@ export function System() {
               </thead>
               <tbody>
                 {s.procs!.map((p) => (
-                  <tr key={p.pid} className="border-b border-cizgi/50 last:border-0 hover:bg-panel2/50">
+                  <tr key={p.pid} className="border-b border-border/50 last:border-0 hover:bg-muted/50">
                     <td className="px-4 py-1.5 font-medium">{p.name}</td>
-                    <td className="px-2 py-1.5 text-soluk">{p.pid}</td>
-                    <td className={`px-2 py-1.5 ${p.user === 'root' ? 'text-amber' : 'text-soluk'}`}>{p.user}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground">{p.pid}</td>
+                    <td className={`px-2 py-1.5 ${p.user === 'root' ? 'text-warning' : 'text-muted-foreground'}`}>{p.user}</td>
                     <td className="px-2 py-1.5 text-right" style={{ color: levelColor(p.cpu / Math.max(1, s.cores), 50, 85) }}>{pct(p.cpu, 1)}</td>
                     <td className="px-2 py-1.5 text-right whitespace-nowrap">{bytes(p.mem)}</td>
-                    <td className="px-4 py-1.5 text-soluk font-mono text-xs max-w-[480px] truncate" title={p.cmd}>{p.cmd}</td>
+                    <td className="px-4 py-1.5 text-muted-foreground font-mono text-xs max-w-[480px] truncate" title={p.cmd}>{p.cmd}</td>
                   </tr>
                 ))}
               </tbody>

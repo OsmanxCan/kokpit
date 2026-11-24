@@ -8,8 +8,11 @@ cd "$(dirname "$0")"
 
 export PANEL_DEV=1 PANEL_DATA=./.veri PANEL_ADDR=127.0.0.1:3100 PANEL_UPDATE_CHECK=false PANEL_SESSION_IP_BIND=false
 
-[ -d web/node_modules ] || (cd web && npm ci --no-audit --no-fund)
-[ -f web/dist/index.html ] || (cd web && npm run build)
+# package-lock.json değiştiyse (yeni paket eklendiyse) bağımlılıkları yeniden kur
+if [ ! -d web/node_modules ] || [ web/package-lock.json -nt web/node_modules/.package-lock.json ]; then
+  (cd web && npm ci --no-audit --no-fund)
+fi
+(cd web && npm run build)   # Go binary'si arayüzü web/dist'ten gömer
 
 if [ ! -s .veri/users.json ]; then
   echo "İlk çalıştırma: panel kullanıcısı oluştur"

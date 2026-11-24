@@ -1,33 +1,81 @@
+// Genel bakış: shadcn "dashboard-01" düzeni — bölüm kartları, etkileşimli grafik, alt paneller.
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, CheckCircle2, ChevronRight } from 'lucide-react'
-import type { Overview as OV, Snapshot } from '../lib/api'
+import { AlertTriangle, CheckCircle2, ChevronRight, Activity, MemoryStick, HardDrive, Network } from 'lucide-react'
+import type { MetricPoint, Overview as OV, Snapshot } from '../lib/api'
 import { usePoll, useStream } from '../lib/hooks'
-import { bytes, duration, pct, rate, levelColor, ago, daysLeft } from '../lib/format'
-import { Panel, Loading, ErrorBox, Dot, Tag, Bar } from '../components/ui'
-import { ScoreGauge, Sparkline } from '../components/charts'
+import { bytes, duration, pct, rate, ago, daysLeft } from '../lib/format'
+import { Card, CardHeader, CardContent, Loading, ErrorBox, Dot, Tag, Tabs, cn } from '../components/ui'
+import { ScoreGauge, AreaChart } from '../components/charts'
 
-function Vital({ label, value, sub, bar, color, spark, sparkMax }: {
-  label: string; value: string; sub: string; bar?: number; color: string; spark: number[]; sparkMax?: number
+type Level = 'iyi' | 'orta' | 'yuksek'
+const lvl = (v: number, warn: number, crit: number): Level => (v >= crit ? 'yuksek' : v >= warn ? 'orta' : 'iyi')
+const lvlTag: Record<Level, { tone: 'yesil' | 'amber' | 'kirmizi'; text: string }> = {
+  iyi: { tone: 'yesil', text: 'Normal' }, orta: { tone: 'amber', text: 'Yüksek' }, yuksek: { tone: 'kirmizi', text: 'Kritik' },
+}
+
+// shadcn SectionCards tarzı kart
+function SectionCard({ label, value, badge, icon: Icon, line, sub }: {
+  label: string; value: string; badge: { tone: 'yesil' | 'amber' | 'kirmizi' | 'mavi'; text: string }; icon: typeof Activity; line: string; sub: string
 }) {
   return (
-    <div className="bg-panel border border-cizgi rounded-lg p-4 flex flex-col">
-      <div className="text-sm text-soluk">{label}</div>
-      <div className="text-3xl font-semibold mt-0.5" style={{ color }}>{value}</div>
-      <div className="text-xs text-soluk mt-0.5 mb-3 truncate" title={sub}>{sub}</div>
-      {bar !== undefined && <div className="mb-3"><Bar value={bar} color={color} /></div>}
-      <div className="mt-auto"><Sparkline values={spark} color={color} max={sparkMax} height={44} /></div>
+    <div className="@container/card flex flex-col gap-6 rounded-xl border bg-gradient-to-t from-primary/5 to-card py-6 shadow-xs dark:bg-card">
+      <div className="grid grid-cols-[1fr_auto] items-start gap-1.5 px-6">
+        <div className="text-sm text-muted-foreground">{label}</div>
+        <Tag tone={badge.tone}>{badge.text}</Tag>
+        <div className="col-span-2 text-2xl font-semibold tabular-nums tracking-tight @[250px]/card:text-3xl">{value}</div>
+      </div>
+      <div className="flex flex-col items-start gap-1.5 px-6 text-sm">
+        <div className="flex items-center gap-2 font-medium line-clamp-1"><span className="truncate">{line}</span> <Icon size={16} className="shrink-0 text-muted-foreground" /></div>
+        <div className="truncate text-muted-foreground max-w-full">{sub}</div>
+      </div>
     </div>
+  )
+}
+
+type Range = 'canli' | '24h' | '7d'
+
+function UsageChart({ ring }: { ring: Snapshot[] }) {
+  const [range, setRange] = useState<Range>('canli')
+  const hist = usePoll<MetricPoint[]>(`/api/system/history?range=${range === 'canli' ? '1h' : range}`, range === 'canli' ? 0 : 60000)
+  const pts: MetricPoint[] = range === 'canli'
+    ? ring.map((x) => ({ ts: x.ts, cpu: x.cpu, mem: x.memPct, swap: x.swapPct, disk: x.rootDisk, load1: x.load1, rx: x.rx, tx: x.tx }))
+    : hist.data ?? []
+  return (
+    <Card>
+      <CardHeader
+        title="Kaynak kullanımı"
+        description={range === 'canli' ? 'Son dakikalar, 5 saniyede bir güncellenir' : range === '24h' ? 'Son 24 saat' : 'Son 7 gün'}
+        action={<Tabs value={range} onChange={setRange} items={[{ id: 'canli', label: 'Canlı' }, { id: '24h', label: '24 saat' }, { id: '7d', label: '7 gün' }]} />}
+      />
+      <CardContent>
+        <AreaChart
+          height={240}
+          times={pts.map((p) => p.ts)}
+          max={100}
+          format={(v) => pct(v, 1)}
+          series={[
+            { key: 'cpu', label: 'CPU', color: 'var(--chart-1)', values: pts.map((p) => p.cpu) },
+            { key: 'mem', label: 'RAM', color: 'var(--chart-2)', values: pts.map((p) => p.mem) },
+          ]}
+        />
+        <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm" style={{ background: 'var(--chart-1)' }} /> CPU</span>
+          <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm" style={{ background: 'var(--chart-2)' }} /> RAM</span>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
 export function Overview() {
   const { data, error } = usePoll<OV>('/api/overview', 30000)
+  const sys = usePoll<{ latest: Snapshot; ring: Snapshot[] }>('/api/system')
   const [live, setLive] = useState<Snapshot | null>(null)
-  const [hist, setHist] = useState<Snapshot[]>([])
+  const [ring, setRing] = useState<Snapshot[]>([])
   useStream<Snapshot>('/api/system/stream', (s) => {
     setLive(s)
-    setHist((h) => [...h, s].slice(-60))
+    setRing((r) => [...r, s].slice(-720))
   })
 
   if (error && !data) return <ErrorBox>{error}</ErrorBox>
@@ -36,105 +84,117 @@ export function Overview() {
   const sec = data.security
   const failed = sec.failed ?? []
   const problems = data.problems ?? []
-  const certs = (data.sites ?? []).filter((x) => x.certExpiry > 0)
-  const soonCerts = certs.filter((c) => daysLeft(c.certExpiry) < 21)
+  const soonCerts = (data.sites ?? []).filter((x) => x.certExpiry > 0 && daysLeft(x.certExpiry) < 21)
+  const base = sys.data?.ring ?? []
+  const fullRing = [...base, ...ring.filter((x) => x.ts > (base[base.length - 1]?.ts ?? 0))].slice(-720)
+  const root = (s.disks ?? []).find((d) => d.mount === '/')
+  const cpuL = lvl(s.cpu, 70, 90), memL = lvl(s.memPct, 75, 90), diskL = lvl(s.rootDisk, 75, 90)
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">{s.hostname}</h1>
-        <div className="text-soluk text-sm">{s.os} · çalışma süresi {duration(s.uptime)} · {s.procCount} süreç</div>
+    <div className="flex flex-col gap-4 md:gap-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <SectionCard label="İşlemci" value={pct(s.cpu)} badge={lvlTag[cpuL]} icon={Activity}
+          line={`Yük ${s.load1.toFixed(2)} · ${s.load5.toFixed(2)} · ${s.load15.toFixed(2)}`} sub={`${s.cores} çekirdek · ${s.procCount} süreç`} />
+        <SectionCard label="Bellek" value={pct(s.memPct)} badge={lvlTag[memL]} icon={MemoryStick}
+          line={`${bytes(s.memUsed)} / ${bytes(s.memTotal)}`} sub={`Swap ${pct(s.swapPct)} · ${bytes(s.swapUsed)} kullanılıyor`} />
+        <SectionCard label="Disk (/)" value={pct(s.rootDisk)} badge={lvlTag[diskL]} icon={HardDrive}
+          line={root ? `${bytes(root.total - root.used)} boş` : '—'} sub={root ? `${bytes(root.used)} / ${bytes(root.total)} dolu` : ''} />
+        <SectionCard label="Ağ" value={rate(s.rx + s.tx)} badge={{ tone: 'mavi', text: 'Canlı' }} icon={Network}
+          line={`↓ ${rate(s.rx)}  ↑ ${rate(s.tx)}`} sub={`Açık kalma süresi ${duration(s.uptime)}`} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,330px)_1fr]">
-        <Panel title="Güvenlik" action={<Link to="/guvenlik" className="text-sm text-soluk hover:text-amber flex items-center">Ayrıntılar <ChevronRight size={14} /></Link>}>
-          <div className="flex justify-center py-1"><ScoreGauge score={sec.score} /></div>
-          <div className="grid grid-cols-3 text-center text-sm border-t border-cizgi pt-3 mt-1">
-            <div><div className="font-semibold text-lg">{sec.sshFail24h}</div><div className="text-soluk text-xs">SSH denemesi / 24 sa</div></div>
-            <div><div className="font-semibold text-lg">{sec.banned}</div><div className="text-soluk text-xs">engelli IP</div></div>
-            <div><div className={`font-semibold text-lg ${sec.ufw === 'active' ? 'text-yesil' : 'text-kirmizi'}`}>{sec.ufw === 'active' ? 'Açık' : 'Kapalı'}</div><div className="text-soluk text-xs">firewall</div></div>
-          </div>
-        </Panel>
+      <UsageChart ring={fullRing} />
 
-        <div className="grid gap-4 grid-cols-2">
-          <Vital label="İşlemci" value={pct(s.cpu)} sub={`${s.cores} çekirdek · yük ${s.load1.toFixed(2)}`} bar={s.cpu}
-            color={levelColor(s.cpu)} spark={hist.map((h) => h.cpu)} sparkMax={100} />
-          <Vital label="Bellek" value={pct(s.memPct)} sub={`${bytes(s.memUsed)} / ${bytes(s.memTotal)} · swap ${pct(s.swapPct)}`} bar={s.memPct}
-            color={levelColor(s.memPct, 75, 90)} spark={hist.map((h) => h.memPct)} sparkMax={100} />
-          <Vital label="Disk (/)" value={pct(s.rootDisk)} sub={(s.disks ?? []).filter((d) => d.mount === '/').map((d) => `${bytes(d.used)} / ${bytes(d.total)}`)[0] ?? ''}
-            bar={s.rootDisk} color={levelColor(s.rootDisk, 75, 90)} spark={hist.map((h) => h.rootDisk)} sparkMax={100} />
-          <Vital label="Ağ" value={rate(s.rx + s.tx)} sub={`↓ ${rate(s.rx)} · ↑ ${rate(s.tx)}`} color="var(--color-mavi)"
-            spark={hist.map((h) => h.rx + h.tx)} />
-        </div>
-      </div>
+      <div className="grid gap-4 md:gap-6 lg:grid-cols-3">
+        <Card>
+          <CardHeader title="Güvenlik skoru" description="Sunucunun sertleştirme durumu"
+            action={<Link to="/guvenlik" className="flex items-center text-sm text-muted-foreground hover:text-foreground">Ayrıntılar <ChevronRight size={14} /></Link>} />
+          <CardContent>
+            <div className="flex justify-center py-1"><ScoreGauge score={sec.score} size={190} /></div>
+            <div className="mt-4 grid grid-cols-3 divide-x rounded-lg border text-center text-sm">
+              <div className="py-2.5"><div className="text-lg font-semibold tabular-nums">{sec.sshFail24h}</div><div className="text-xs text-muted-foreground">SSH denemesi</div></div>
+              <div className="py-2.5"><div className="text-lg font-semibold tabular-nums">{sec.banned}</div><div className="text-xs text-muted-foreground">engelli IP</div></div>
+              <div className="py-2.5"><div className={cn('text-lg font-semibold', sec.ufw === 'active' ? 'text-success' : 'text-destructive')}>{sec.ufw === 'active' ? 'Açık' : 'Kapalı'}</div><div className="text-xs text-muted-foreground">firewall</div></div>
+            </div>
+          </CardContent>
+        </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Dikkat gerektirenler">
-          {failed.length === 0 && problems.length === 0 && soonCerts.length === 0 ? (
-            <div className="flex items-center gap-2 text-yesil py-3"><CheckCircle2 size={18} /> Her şey yolunda görünüyor.</div>
-          ) : (
-            <ul className="divide-y divide-cizgi">
-              {problems.map((p) => (
-                <li key={p.kind + p.name} className="py-2.5 flex items-center gap-3">
-                  <Dot ok={false} />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate">{p.name} çalışmıyor</div>
-                    <div className="text-xs text-soluk">{p.kind} · {p.status}</div>
-                  </div>
-                  <Link to="/projeler" className="text-sm text-amber hover:underline">Aç</Link>
-                </li>
-              ))}
-              {soonCerts.map((c) => (
-                <li key={c.file + c.certFile} className="py-2.5 flex items-center gap-3">
-                  <Dot ok={false} warn />
-                  <div className="flex-1 min-w-0 truncate">SSL sertifikası {daysLeft(c.certExpiry)} gün içinde bitiyor: {(c.names ?? []).join(', ')}</div>
-                </li>
-              ))}
-              {failed.map((c) => (
-                <li key={c.id} className="py-2.5 flex items-start gap-3">
-                  <AlertTriangle size={16} className={`mt-0.5 shrink-0 ${c.level === 'critical' ? 'text-kirmizi' : c.level === 'warning' ? 'text-amber' : 'text-mavi'}`} />
-                  <div className="min-w-0">
-                    <div>{c.title}: <span className="text-soluk">{c.detail}</span></div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Panel>
-
-        <Panel title="Projeler" action={<Link to="/projeler" className="text-sm text-soluk hover:text-amber flex items-center">Tümü <ChevronRight size={14} /></Link>}>
-          <div className="grid grid-cols-3 gap-3">
-            {(['pm2', 'docker', 'systemd'] as const).map((k) => {
-              const c = data.counts[k]
-              const all = c.total > 0 && c.healthy === c.total
-              return (
-                <div key={k} className="bg-gece/60 border border-cizgi rounded-md p-3">
-                  <div className="text-sm text-soluk">{{ pm2: 'PM2', docker: 'Docker', systemd: 'Servisler' }[k]}</div>
-                  <div className="text-2xl font-semibold mt-0.5">
-                    <span className={all ? 'text-yesil' : c.total ? 'text-amber' : ''}>{c.healthy}</span>
-                    <span className="text-soluk text-lg">/{c.total}</span>
-                  </div>
-                  <div className="text-xs text-soluk">çalışıyor</div>
-                </div>
-              )
-            })}
-          </div>
-          <div className="mt-4">
-            <div className="text-sm text-soluk mb-1.5">Son bildirimler</div>
-            {data.alerts.length === 0 ? <div className="text-sm text-soluk">Henüz bildirim yok.</div> : (
-              <ul className="space-y-1.5">
-                {data.alerts.slice(0, 5).map((a) => (
-                  <li key={a.id} className="flex items-center gap-2 text-sm">
-                    <Tag tone={a.level === 'critical' ? 'kirmizi' : a.level === 'warning' ? 'amber' : a.level === 'ok' ? 'yesil' : 'mavi'}>{a.kind}</Tag>
-                    <span className="truncate flex-1">{plainText(a.message)}</span>
-                    <span className="text-xs text-soluk whitespace-nowrap">{ago(a.ts)}</span>
+        <Card className="lg:col-span-2">
+          <CardHeader title="Dikkat gerektirenler" description={failed.length + problems.length + soonCerts.length ? 'Çözülmesi önerilen konular' : undefined} />
+          <CardContent>
+            {failed.length === 0 && problems.length === 0 && soonCerts.length === 0 ? (
+              <div className="flex items-center gap-2 py-3 text-success"><CheckCircle2 size={18} /> Her şey yolunda görünüyor.</div>
+            ) : (
+              <ul className="divide-y rounded-lg border">
+                {problems.map((p) => (
+                  <li key={p.kind + p.name} className="flex items-center gap-3 px-4 py-2.5">
+                    <Dot ok={false} />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">{p.name} çalışmıyor</div>
+                      <div className="text-xs text-muted-foreground">{p.kind} · {p.status}</div>
+                    </div>
+                    <Link to="/projeler" className="text-sm text-muted-foreground hover:text-foreground">Aç</Link>
+                  </li>
+                ))}
+                {soonCerts.map((c) => (
+                  <li key={c.file + c.certFile} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                    <Dot ok={false} warn />
+                    <span className="min-w-0 flex-1 truncate">SSL sertifikası {daysLeft(c.certExpiry)} gün içinde bitiyor: {(c.names ?? []).join(', ')}</span>
+                  </li>
+                ))}
+                {failed.map((c) => (
+                  <li key={c.id} className="flex items-start gap-3 px-4 py-2.5 text-sm">
+                    <AlertTriangle size={16} className={cn('mt-0.5 shrink-0', c.level === 'critical' ? 'text-destructive' : c.level === 'warning' ? 'text-warning' : 'text-info')} />
+                    <div className="min-w-0"><span className="font-medium">{c.title}</span><span className="text-muted-foreground">: {c.detail}</span></div>
                   </li>
                 ))}
               </ul>
             )}
-          </div>
-        </Panel>
+          </CardContent>
+        </Card>
       </div>
+
+      <div className="grid gap-4 md:gap-6 lg:grid-cols-3">
+        <Card>
+          <CardHeader title="Projeler" action={<Link to="/projeler" className="flex items-center text-sm text-muted-foreground hover:text-foreground">Tümü <ChevronRight size={14} /></Link>} />
+          <CardContent className="grid gap-3">
+            {(['pm2', 'docker', 'systemd'] as const).map((k) => {
+              const c = data.counts[k]
+              const all = c.total > 0 && c.healthy === c.total
+              return (
+                <div key={k} className="flex items-center justify-between rounded-lg border px-4 py-3">
+                  <div>
+                    <div className="text-sm font-medium">{{ pm2: 'PM2 süreçleri', docker: 'Docker', systemd: 'Servisler' }[k]}</div>
+                    <div className="text-xs text-muted-foreground">{c.total === 0 ? 'yok' : all ? 'hepsi çalışıyor' : `${c.total - c.healthy} tanesi durmuş`}</div>
+                  </div>
+                  <div className="text-xl font-semibold tabular-nums">
+                    <span className={all ? '' : c.total ? 'text-warning' : 'text-muted-foreground'}>{c.healthy}</span>
+                    <span className="text-base text-muted-foreground">/{c.total}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader title="Son bildirimler" action={<Link to="/bildirimler" className="flex items-center text-sm text-muted-foreground hover:text-foreground">Tümü <ChevronRight size={14} /></Link>} />
+          <CardContent>
+            {data.alerts.length === 0 ? <div className="py-3 text-sm text-muted-foreground">Henüz bildirim yok.</div> : (
+              <ul className="divide-y rounded-lg border">
+                {data.alerts.slice(0, 6).map((a) => (
+                  <li key={a.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                    <Tag tone={a.level === 'critical' ? 'kirmizi' : a.level === 'warning' ? 'amber' : a.level === 'ok' ? 'yesil' : 'mavi'}>{a.kind}</Tag>
+                    <span className="min-w-0 flex-1 truncate">{plainText(a.message)}</span>
+                    <span className="whitespace-nowrap text-xs text-muted-foreground">{ago(a.ts)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+      <p className="text-xs text-muted-foreground">{s.hostname} · {s.os} · çekirdek {s.kernel}</p>
     </div>
   )
 }

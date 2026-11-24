@@ -1,55 +1,138 @@
 @import "tailwindcss";
-@import "@fontsource/ibm-plex-sans/latin-ext-400.css";
-@import "@fontsource/ibm-plex-sans/latin-ext-500.css";
-@import "@fontsource/ibm-plex-sans/latin-ext-600.css";
-@import "@fontsource/ibm-plex-sans/latin-400.css";
-@import "@fontsource/ibm-plex-sans/latin-500.css";
-@import "@fontsource/ibm-plex-sans/latin-600.css";
-@import "@fontsource/ibm-plex-mono/latin-400.css";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
 
-/* Kokpit paleti: lacivert gece, amber sinyal, yeşil normal, kırmızı kritik */
-@theme {
-  --color-gece: #0e1621;
-  --color-panel: #15202e;
-  --color-panel2: #1a2738;
-  --color-cizgi: #24334a;
-  --color-metin: #d7e0ea;
-  --color-soluk: #8496ab;
-  --color-amber: #f2a93b;
-  --color-yesil: #3fb68b;
-  --color-kirmizi: #e5534b;
-  --color-mavi: #5b9bd5;
-  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * shadcn/ui nötr paleti + Kokpit'in durum renkleri.
+ * Marka rengi (amber) sadece logo, göstergeler ve odak halkasında kullanılır.
+ */
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.52 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.955 0 0);
+  --brand: oklch(0.75 0.16 70);
+  --success: oklch(0.6 0.15 155);
+  --warning: oklch(0.7 0.16 70);
+  --destructive: oklch(0.577 0.245 27.325);
+  --info: oklch(0.6 0.15 250);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.55 0.2 265);
 }
 
-html {
-  background: var(--color-gece);
-  color: var(--color-metin);
-  font-family: var(--font-sans);
-  font-feature-settings: "tnum" 1;
-  -webkit-font-smoothing: antialiased;
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --brand: oklch(0.78 0.16 70);
+  --success: oklch(0.72 0.15 155);
+  --warning: oklch(0.8 0.15 75);
+  --destructive: oklch(0.704 0.191 22.216);
+  --info: oklch(0.72 0.13 250);
+  --chart-1: oklch(0.78 0.16 70);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.7 0.15 260);
 }
 
-body {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.5;
+@theme inline {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-brand: var(--brand);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-destructive: var(--destructive);
+  --color-info: var(--info);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
-:focus-visible {
-  outline: 2px solid var(--color-amber);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
-::selection {
-  background: color-mix(in srgb, var(--color-amber) 35%, transparent);
-}
-
-* {
-  scrollbar-color: var(--color-cizgi) transparent;
-  scrollbar-width: thin;
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "tnum" 1, "cv11" 1;
+    -webkit-font-smoothing: antialiased;
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  :focus-visible {
+    outline: 2px solid color-mix(in oklch, var(--brand) 70%, transparent);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--brand) 30%, transparent);
+  }
+  * {
+    scrollbar-color: var(--border) transparent;
+    scrollbar-width: thin;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -59,14 +142,19 @@ body {
   }
 }
 
-/* Canlı nabız: üst bardaki tek sürekli hareket */
+/* Canlı bağlantı göstergesi */
 @keyframes nabiz {
-  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-yesil) 60%, transparent); }
-  70% { box-shadow: 0 0 0 7px transparent; }
+  0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--success) 55%, transparent); }
+  70% { box-shadow: 0 0 0 6px transparent; }
   100% { box-shadow: 0 0 0 0 transparent; }
 }
 .nabiz { animation: nabiz 2.4s ease-out infinite; }
 
-/* Göstergenin açılışta bir kez dolması */
+/* Güvenlik göstergesinin açılışta bir kez dolması */
 @keyframes dol { from { opacity: 0; } to { opacity: 1; } }
 .gosterge-dol { animation: dol .35s ease-out both; }
+
+/* Sayfa geçişi */
+@keyframes sayfa { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+/* "backwards": animasyon bitince transform kalmasın; kalırsa içerideki fixed öğeler (pencereler) kayar */
+.sayfa-gir { animation: sayfa .25s ease-out backwards; }

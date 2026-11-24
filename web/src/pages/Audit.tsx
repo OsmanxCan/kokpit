@@ -37,14 +37,14 @@ export function Audit() {
         pad={false}
         action={(sess.data?.length ?? 0) > 1 && <ConfirmButton onConfirm={killOthers} variant="tehlike" confirmText="Hepsini kapat?">Diğer oturumları kapat</ConfirmButton>}
       >
-        <ul className="border-t border-cizgi">
+        <ul className="border-t border-border">
           {(sess.data ?? []).map((s) => (
-            <li key={s.id} className="px-4 py-2.5 border-b border-cizgi/50 last:border-0 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+            <li key={s.id} className="px-4 py-2.5 border-b border-border/50 last:border-0 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
               <span className="font-medium">{s.username}</span>
               <span className="font-mono text-xs">{s.ip}</span>
-              <span className="text-soluk">{browser(s.ua)}</span>
+              <span className="text-muted-foreground">{browser(s.ua)}</span>
               {s.current && <Tag tone="yesil">bu oturum</Tag>}
-              <span className="ml-auto text-xs text-soluk">açıldı {dateTime(s.created)} · son işlem {ago(s.lastSeen)}</span>
+              <span className="ml-auto text-xs text-muted-foreground">açıldı {dateTime(s.created)} · son işlem {ago(s.lastSeen)}</span>
             </li>
           ))}
         </ul>
@@ -54,22 +54,22 @@ export function Audit() {
         {log.data.length === 0 ? <Empty>Henüz kayıt yok.</Empty> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="text-soluk text-left border-y border-cizgi">
+              <thead><tr className="text-muted-foreground text-left border-y border-border">
                 <th className="font-normal px-4 py-2">Zaman</th><th className="font-normal px-2 py-2">Kullanıcı</th>
                 <th className="font-normal px-2 py-2">IP</th><th className="font-normal px-2 py-2">İşlem</th>
                 <th className="font-normal px-2 py-2">Hedef</th><th className="font-normal px-4 py-2">Sonuç</th>
               </tr></thead>
               <tbody>
                 {log.data.map((a) => (
-                  <tr key={a.id} className="border-b border-cizgi/50 last:border-0 align-top">
-                    <td className="px-4 py-1.5 whitespace-nowrap text-soluk">{dateTime(a.ts)}</td>
+                  <tr key={a.id} className="border-b border-border/50 last:border-0 align-top">
+                    <td className="px-4 py-1.5 whitespace-nowrap text-muted-foreground">{dateTime(a.ts)}</td>
                     <td className="px-2 py-1.5">{a.username}</td>
                     <td className="px-2 py-1.5 font-mono text-xs">{a.ip}</td>
                     <td className="px-2 py-1.5">{a.action}</td>
                     <td className="px-2 py-1.5">{a.target}</td>
                     <td className="px-4 py-1.5">
                       <Tag tone={a.ok ? 'yesil' : 'kirmizi'}>{a.ok ? 'başarılı' : 'başarısız'}</Tag>
-                      {a.detail && !a.ok && <div className="text-xs text-soluk mt-0.5 max-w-[340px] truncate" title={a.detail}>{a.detail}</div>}
+                      {a.detail && !a.ok && <div className="text-xs text-muted-foreground mt-0.5 max-w-[340px] truncate" title={a.detail}>{a.detail}</div>}
                     </td>
                   </tr>
                 ))}

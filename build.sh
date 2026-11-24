@@ -18,7 +18,7 @@ LDFLAGS="-s -w -X main.Version=${VERSION} -X main.Repo=${REPO}"
 
 echo "→ Sürüm: ${VERSION}  Depo: ${REPO:-(yok)}"
 echo "→ Arayüz derleniyor (web/)"
-( cd web && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npm run build )
+( cd web && { { [ -d node_modules ] && [ ! package-lock.json -nt node_modules/.package-lock.json ]; } || npm ci --no-audit --no-fund; } && npm run build )
 
 mkdir -p bin
 if [ "${1:-}" = "hepsi" ]; then

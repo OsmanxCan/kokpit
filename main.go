@@ -29,6 +29,7 @@ import (
 	"github.com/OsmanxCan/kokpit/internal/security"
 	"github.com/OsmanxCan/kokpit/internal/server"
 	"github.com/OsmanxCan/kokpit/internal/services"
+	"github.com/OsmanxCan/kokpit/internal/settings"
 	"github.com/OsmanxCan/kokpit/internal/store"
 	"github.com/OsmanxCan/kokpit/internal/system"
 	"github.com/OsmanxCan/kokpit/internal/update"
@@ -79,9 +80,15 @@ func serve(cfg *config.Config) {
 		log.Println("UYARI: Henüz kullanıcı yok. 'kokpit kullanici-ekle' çalıştır.")
 	}
 
+	set, err := settings.Open(cfg.DataDir, cfg)
+	if err != nil {
+		log.Fatalf("ayarlar okunamadı: %v", err)
+	}
+
 	sys := system.New(st)
 	sys.Start()
 	svc := services.New(cfg)
+	svc.Watched = set.Watched
 	sec := security.New()
 	sec.RootPM2 = func() []string {
 		var out []string
@@ -94,13 +101,13 @@ func serve(cfg *config.Config) {
 		}
 		return out
 	}
-	al := alerts.New(cfg, st, sys, svc)
+	al := alerts.New(set, st, sys, svc)
+	al.Version = Version
 	al.Start()
 
-	upd := update.New(Version, cfg.Repo, cfg.UpdateCheck)
+	upd := update.New(Version, cfg.Repo, set.Get().UpdateCheck)
 	upd.OnNew = func(r *update.Release) {
-		al.Fire("info", "guncelleme", "newver"+r.Version,
-			fmt.Sprintf("Yeni panel sürümü var: <b>%s</b> (kurulu: %s)\nPanelde Güncellemeler sayfasından kurabilirsin.", r.Version, Version), 24*time.Hour)
+		al.Fire("update_available", r.Version, map[string]string{"yeni": r.Version, "kurulu": Version})
 	}
 	upd.Start()
 
@@ -111,7 +118,7 @@ func serve(cfg *config.Config) {
 		}
 	}()
 
-	srv := server.New(cfg, st, sys, svc, sec, al, upd, web.Dist())
+	srv := server.New(cfg, st, set, sys, svc, sec, al, upd, web.Dist())
 	hs := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           srv.Handler(),

@@ -12,6 +12,7 @@ import { Security } from './pages/Security'
 import { Alerts } from './pages/Alerts'
 import { Audit } from './pages/Audit'
 import { Updates } from './pages/Updates'
+import { Settings } from './pages/Settings'
 
 
 export default function App() {
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="/bildirimler" element={<Alerts />} />
           <Route path="/kayitlar" element={<Audit />} />
           <Route path="/guncellemeler" element={<Updates />} />
+          <Route path="/ayarlar" element={<Settings />} />
           <Route path="*" element={<Overview />} />
         </Routes>
       </Layout>

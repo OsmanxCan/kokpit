@@ -57,7 +57,7 @@ export function Sites() {
         }
       />
       {out && (
-        <pre className={`font-mono text-xs whitespace-pre-wrap rounded-md border px-3 py-2 ${out.ok ? 'border-yesil/40 text-yesil bg-yesil/5' : 'border-kirmizi/40 text-kirmizi bg-kirmizi/10'}`}>{out.text}</pre>
+        <pre className={`font-mono text-xs whitespace-pre-wrap rounded-md border px-3 py-2 ${out.ok ? 'border-success/40 text-success bg-success/5' : 'border-destructive/40 text-destructive bg-destructive/10'}`}>{out.text}</pre>
       )}
       <Panel pad={false}>
         {servers.length === 0 ? <Empty>/etc/nginx/sites-enabled içinde site bulunamadı.</Empty> : (
@@ -67,27 +67,27 @@ export function Sites() {
               const host = names.find((n) => n.includes('.')) ?? ''
               const p = host ? probes[host] : undefined
               return (
-                <li key={s.file + i} className="px-4 py-3.5 border-b border-cizgi/60 last:border-0 flex flex-wrap gap-x-6 gap-y-2 items-start">
+                <li key={s.file + i} className="px-4 py-3.5 border-b border-border/60 last:border-0 flex flex-wrap gap-x-6 gap-y-2 items-start">
                   <div className="min-w-0 flex-1 basis-72">
                     <div className="font-medium flex flex-wrap items-center gap-2">
                       {names.join(', ') || '(adsız)'}
                       {s.ssl ? <Tag tone="yesil">HTTPS</Tag> : <Tag>HTTP</Tag>}
                     </div>
-                    <div className="text-sm text-soluk mt-0.5">
-                      {(s.proxyPass ?? []).length > 0 ? <>→ <span className="font-mono text-xs text-metin">{s.proxyPass!.join(', ')}</span></> :
-                        s.root ? <>statik dosyalar: <span className="font-mono text-xs text-metin">{s.root}</span></> : 'yönlendirme'}
+                    <div className="text-sm text-muted-foreground mt-0.5">
+                      {(s.proxyPass ?? []).length > 0 ? <>→ <span className="font-mono text-xs text-foreground">{s.proxyPass!.join(', ')}</span></> :
+                        s.root ? <>statik dosyalar: <span className="font-mono text-xs text-foreground">{s.root}</span></> : 'yönlendirme'}
                     </div>
-                    <div className="text-xs text-soluk mt-0.5">dosya: {s.file} · dinliyor: {(s.listen ?? []).join(', ')}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">dosya: {s.file} · dinliyor: {(s.listen ?? []).join(', ')}</div>
                   </div>
                   <div className="text-sm min-w-52">
-                    <div className="flex items-center gap-2"><span className="text-soluk">Sunucudaki sertifika</span> <CertTag expiry={s.certExpiry} /></div>
-                    {s.certExpiry > 0 && <div className="text-xs text-soluk mt-0.5">{s.certIssuer} · {dateTime(s.certExpiry)}</div>}
+                    <div className="flex items-center gap-2"><span className="text-muted-foreground">Sunucudaki sertifika</span> <CertTag expiry={s.certExpiry} /></div>
+                    {s.certExpiry > 0 && <div className="text-xs text-muted-foreground mt-0.5">{s.certIssuer} · {dateTime(s.certExpiry)}</div>}
                     {p && p !== 'loading' && (
                       <div className="mt-1.5 text-xs">
-                        {p.error ? <span className="text-kirmizi">Ulaşılamadı: {p.error}</span> : (
+                        {p.error ? <span className="text-destructive">Ulaşılamadı: {p.error}</span> : (
                           <span>
-                            <span className={p.ms > 1500 ? 'text-amber' : 'text-yesil'}>{p.ms} ms</span>
-                            <span className="text-soluk"> · dışarıdaki sertifika: {p.issuer} ({daysLeft(p.expiry)} gün)</span>
+                            <span className={p.ms > 1500 ? 'text-warning' : 'text-success'}>{p.ms} ms</span>
+                            <span className="text-muted-foreground"> · dışarıdaki sertifika: {p.issuer} ({daysLeft(p.expiry)} gün)</span>
                           </span>
                         )}
                       </div>

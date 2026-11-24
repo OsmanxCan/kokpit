@@ -8,9 +8,11 @@
     "build": "tsc -b && vite build && node -e \"require('fs').writeFileSync('dist/.gitkeep','')\""
   },
   "dependencies": {
-    "@fontsource/ibm-plex-mono": "^5.2.6",
-    "@fontsource/ibm-plex-sans": "^5.2.6",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@types/qrcode": "^1.5.6",
     "lucide-react": "^0.511.0",
+    "qrcode": "^1.5.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.0"

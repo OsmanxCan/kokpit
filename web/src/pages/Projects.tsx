@@ -25,7 +25,7 @@ function Row({ it, onLogs, onChange }: { it: Item; onLogs: () => void; onChange:
   }
   const up = it.kind === 'pm2' && it.uptime && it.healthy ? duration((Date.now() - it.uptime) / 1000) : ''
   return (
-    <li className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 border-b border-cizgi/60 last:border-0">
+    <li className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 border-b border-border/60 last:border-0">
       <div className="flex items-center gap-2.5 min-w-0 flex-1 basis-64">
         <Dot ok={it.healthy} />
         <div className="min-w-0">
@@ -34,18 +34,18 @@ function Row({ it, onLogs, onChange }: { it: Item; onLogs: () => void; onChange:
             {it.user === 'root' && it.kind === 'pm2' && <Tag tone="amber">root</Tag>}
             {it.user === 'izleniyor' && <Tag tone="mavi">izleniyor</Tag>}
           </div>
-          <div className="text-xs text-soluk truncate" title={it.info}>{it.info}{it.ports ? ` · ${it.ports}` : ''}</div>
+          <div className="text-xs text-muted-foreground truncate" title={it.info}>{it.info}{it.ports ? ` · ${it.ports}` : ''}</div>
         </div>
       </div>
       <div className="flex items-center gap-4 text-sm">
-        <span className={it.healthy ? 'text-yesil' : 'text-kirmizi'}>{it.status}</span>
+        <span className={it.healthy ? 'text-success' : 'text-destructive'}>{it.status}</span>
         {(it.kind !== 'systemd') && (
           <>
-            <span className="text-soluk w-16 text-right">{pct(it.cpu, 1)}</span>
-            <span className="text-soluk w-20 text-right">{bytes(it.mem)}</span>
+            <span className="text-muted-foreground w-16 text-right">{pct(it.cpu, 1)}</span>
+            <span className="text-muted-foreground w-20 text-right">{bytes(it.mem)}</span>
           </>
         )}
-        {it.kind === 'pm2' && <span className="text-soluk w-28 text-right hidden sm:inline">{up}{it.restarts ? ` · ↺${it.restarts}` : ''}</span>}
+        {it.kind === 'pm2' && <span className="text-muted-foreground w-28 text-right hidden sm:inline">{up}{it.restarts ? ` · ↺${it.restarts}` : ''}</span>}
       </div>
       <div className="flex items-center gap-1.5">
         <Button variant="hayalet" onClick={onLogs} title="Canlı loglar"><ScrollText size={15} /> Log</Button>
@@ -80,7 +80,7 @@ export function Projects() {
         desc="PM2 süreçleri, Docker container'ları ve sistem servisleri. Yeniden başlatma ve durdurma için butona iki kez bas."
         action={
           <div className="flex items-center gap-2">
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ara" className="h-8 w-40 bg-gece border border-cizgi rounded-md px-2 text-sm placeholder:text-soluk" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ara" className="h-8 w-40 bg-background border border-border rounded-md px-2 text-sm placeholder:text-muted-foreground" />
             <Button onClick={reload} loading={loading} title="Yenile"><RefreshCw size={14} /></Button>
           </div>
         }
@@ -91,16 +91,16 @@ export function Projects() {
           <Panel
             key={k}
             pad={false}
-            title={<span>{kindTitle[k]} <span className="text-soluk font-normal">{items.filter((i) => i.healthy).length}/{items.length}</span></span>}
+            title={<span>{kindTitle[k]} <span className="text-muted-foreground font-normal">{items.filter((i) => i.healthy).length}/{items.length}</span></span>}
             action={k === 'systemd' && (
-              <label className="text-sm text-soluk flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} className="accent-amber" /> Durmuş servisleri de göster
+              <label className="text-sm text-muted-foreground flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} className="accent-primary" /> Durmuş servisleri de göster
               </label>
             )}
           >
             {data.errors?.[k] && <div className="px-4 pb-3"><ErrorBox>{data.errors[k]}</ErrorBox></div>}
             {items.length === 0 ? <Empty>{q ? 'Aramayla eşleşen yok.' : 'Burada çalışan bir şey yok.'}</Empty> : (
-              <ul className="border-t border-cizgi">
+              <ul className="border-t border-border">
                 {items.map((it) => <Row key={it.kind + it.name} it={it} onLogs={() => setLogs({ kind: k, name: it.name })} onChange={reload} />)}
               </ul>
             )}

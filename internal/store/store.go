@@ -209,6 +209,46 @@ func (s *Store) UpsertUser(u User) error {
 	return os.Rename(tmp, s.usersPath)
 }
 
+// writeUsers users.json'u atomik yazar (s.mu kilitliyken çağrılır).
+func (s *Store) writeUsers() error {
+	b, err := json.MarshalIndent(s.users, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := s.usersPath + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, s.usersPath)
+}
+
+// Users kullanıcıları (sırları olmadan) listeler.
+func (s *Store) Users() []User {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.loadUsers()
+	out := []User{}
+	for _, u := range s.users {
+		out = append(out, User{Username: u.Username, CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt < out[j].CreatedAt })
+	return out
+}
+
+func (s *Store) DeleteUser(username string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.loadUsers()
+	delete(s.users, username)
+	for k, x := range s.d.Sessions {
+		if x.Username == username {
+			delete(s.d.Sessions, k)
+		}
+	}
+	s.touch()
+	return s.writeUsers()
+}
+
 func (s *Store) UserCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
