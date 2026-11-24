@@ -80,19 +80,19 @@ func (e *Engine) Test() error {
 	return err
 }
 
+// Start arka planda çalışır; panelin açılışını bekletmez.
 func (e *Engine) Start() {
-	// İlk açılışta son 30 günün SSH IP'lerini "bilinen" olarak işaretle (sahte alarm olmasın)
-	if e.st.Get("ssh_seeded") == "" {
-		for _, ev := range security.SSHLog("-30d") {
-			if ev.Type == "accepted" {
-				e.st.AddKnownIP(ev.IP)
-			}
-		}
-		e.st.Set("ssh_seeded", "1")
-	}
 	e.lastSSH = time.Now()
-	e.Fire("ok", "panel", "panel_start", "Kokpit başlatıldı.", time.Minute)
 	go func() {
+		// İlk açılışta son 30 günün SSH IP'lerini "bilinen" olarak işaretle (sahte alarm olmasın).
+		// Büyük journal'larda uzun sürebileceği için HTTP sunucusunu bekletmez.
+		if e.st.Get("ssh_seeded") == "" {
+			for ip := range security.SSHAcceptedIPs("-30d") {
+				e.st.AddKnownIP(ip)
+			}
+			e.st.Set("ssh_seeded", "1")
+		}
+		e.Fire("ok", "panel", "panel_start", "Kokpit başlatıldı.", time.Minute)
 		time.Sleep(20 * time.Second)
 		for {
 			e.check()

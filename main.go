@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -65,6 +66,10 @@ func main() {
 }
 
 func serve(cfg *config.Config) {
+	// Küçük sunucularda belleği sınırlı tut (GOMEMLIMIT ortam değişkeni verilmişse o geçerli)
+	if os.Getenv("GOMEMLIMIT") == "" {
+		debug.SetMemoryLimit(64 << 20)
+	}
 	st, err := store.Open(cfg.DataDir)
 	if err != nil {
 		log.Fatalf("veri klasörü açılamadı: %v", err)

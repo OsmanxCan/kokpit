@@ -3,9 +3,11 @@ package security
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"net"
 	"os"
+	"os/exec"
 	"regexp"
 	"sort"
 	"strconv"
@@ -305,55 +307,120 @@ var (
 	invalidRe  = regexp.MustCompile(`Invalid user (\S*) from (\S+)`)
 )
 
-// SSHLog son süredeki SSH olaylarını journal'dan okur.
-func SSHLog(since string) []SSHEvent {
-	out, _ := execx.RunTimeout(30*time.Second, "journalctl", "-t", "sshd", "-t", "sshd-session", "--since", since,
-		"--no-pager", "-o", "short-iso", "-q")
-	var ev []SSHEvent
-	sc := bufio.NewScanner(strings.NewReader(out))
-	sc.Buffer(make([]byte, 1024*1024), 1024*1024)
+// SSHScan journal'daki SSH olaylarını satır satır okur ve her olay için fn'i çağırır.
+// Çıktı belleğe topluca alınmaz; saldırı alan sunucularda log'lar yüz MB'ları bulabilir.
+// pattern boş değilse journalctl --grep ile önceden süzülür (çok daha hızlı).
+func SSHScan(since, pattern string, fn func(SSHEvent)) {
+	if !scanJournal(since, pattern, fn) && pattern != "" {
+		// Eski journalctl --grep desteklemiyorsa süzmeden oku
+		scanJournal(since, "", fn)
+	}
+}
+
+func scanJournal(since, pattern string, fn func(SSHEvent)) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	args := []string{"-t", "sshd", "-t", "sshd-session", "--since", since, "--no-pager", "-o", "short-iso", "-q"}
+	if pattern != "" {
+		args = append(args, "--grep", pattern)
+	}
+	cmd := exec.CommandContext(ctx, "journalctl", args...)
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return false
+	}
+	if err := cmd.Start(); err != nil {
+		return false
+	}
+	n := 0
+	sc := bufio.NewScanner(out)
+	sc.Buffer(make([]byte, 64*1024), 1024*1024)
 	for sc.Scan() {
-		l := sc.Text()
-		ts := ""
-		if f := strings.Fields(l); len(f) > 0 {
-			ts = f[0]
-		}
-		if m := acceptedRe.FindStringSubmatch(l); m != nil {
-			ev = append(ev, SSHEvent{ts, "accepted", m[2], m[3], m[1]})
-		} else if m := failedRe.FindStringSubmatch(l); m != nil {
-			ev = append(ev, SSHEvent{ts, "failed", m[1], m[2], ""})
-		} else if m := invalidRe.FindStringSubmatch(l); m != nil {
-			ev = append(ev, SSHEvent{ts, "invalid", m[1], m[2], ""})
+		n++
+		if e, ok := parseSSH(sc.Text()); ok {
+			fn(e)
 		}
 	}
+	err = cmd.Wait()
+	// journalctl --grep eşleşme yoksa 1 ile çıkar; bu bir hata değil
+	if err != nil && n == 0 && pattern != "" {
+		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 {
+			return true
+		}
+		return false
+	}
+	return true
+}
+
+func parseSSH(l string) (SSHEvent, bool) {
+	ts := ""
+	if i := strings.IndexByte(l, ' '); i > 0 {
+		ts = l[:i]
+	}
+	if m := acceptedRe.FindStringSubmatch(l); m != nil {
+		return SSHEvent{ts, "accepted", m[2], m[3], m[1]}, true
+	}
+	if m := failedRe.FindStringSubmatch(l); m != nil {
+		return SSHEvent{ts, "failed", m[1], m[2], ""}, true
+	}
+	if m := invalidRe.FindStringSubmatch(l); m != nil {
+		return SSHEvent{ts, "invalid", m[1], m[2], ""}, true
+	}
+	return SSHEvent{}, false
+}
+
+const sshPattern = "Accepted |Failed (password|publickey)|Invalid user"
+
+// SSHLog kısa süreli aralıklar için olayları liste olarak döner (en fazla 20.000).
+func SSHLog(since string) []SSHEvent {
+	var ev []SSHEvent
+	SSHScan(since, sshPattern, func(e SSHEvent) {
+		if len(ev) < 20000 {
+			ev = append(ev, e)
+		}
+	})
 	return ev
 }
 
+// SSHAcceptedIPs başarılı giriş yapılan IP'leri döner.
+func SSHAcceptedIPs(since string) map[string]bool {
+	ips := map[string]bool{}
+	SSHScan(since, "Accepted ", func(e SSHEvent) {
+		if e.Type == "accepted" {
+			ips[e.IP] = true
+		}
+	})
+	return ips
+}
+
 func sshEvents() ([]SSHEvent, []IPCount, int) {
-	ev := SSHLog("-24h")
 	accepted := []SSHEvent{}
 	fails := map[string]*IPCount{}
 	users := map[string]map[string]bool{}
 	nfail := 0
-	for _, e := range ev {
+	SSHScan("-24h", sshPattern, func(e SSHEvent) {
 		if e.Type == "accepted" {
 			accepted = append(accepted, e)
-			continue
-		}
-		if e.Type == "failed" || e.Type == "invalid" {
-			nfail++
-			c, ok := fails[e.IP]
-			if !ok {
-				c = &IPCount{IP: e.IP}
-				fails[e.IP] = c
-				users[e.IP] = map[string]bool{}
+			if len(accepted) > 60 {
+				accepted = accepted[len(accepted)-30:]
 			}
-			c.Count++
-			if len(users[e.IP]) < 5 {
-				users[e.IP][e.User] = true
-			}
+			return
 		}
-	}
+		nfail++
+		c, ok := fails[e.IP]
+		if !ok {
+			if len(fails) >= 50000 { // aşırı durumda belleği sınırla
+				return
+			}
+			c = &IPCount{IP: e.IP}
+			fails[e.IP] = c
+			users[e.IP] = map[string]bool{}
+		}
+		c.Count++
+		if len(users[e.IP]) < 5 {
+			users[e.IP][e.User] = true
+		}
+	})
 	top := []IPCount{}
 	for ip, c := range fails {
 		var us []string

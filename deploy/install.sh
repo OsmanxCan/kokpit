@@ -104,8 +104,14 @@ if [ ! -s "$DATA/users.json" ]; then
 fi
 
 systemctl enable --now kokpit >/dev/null 2>&1
-sleep 2
-if curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:3100/; then
+echo -n "  Panelin açılması bekleniyor"
+HAZIR=0
+for _ in $(seq 1 30); do
+  if curl -fsS -o /dev/null --max-time 2 http://127.0.0.1:3100/ 2>/dev/null; then HAZIR=1; break; fi
+  echo -n "."; sleep 1
+done
+echo
+if [ "$HAZIR" = 1 ]; then
   renk 32 "✓ Panel çalışıyor: http://127.0.0.1:3100 (sadece sunucunun içinden erişilebilir)"
 else
   renk 31 "✗ Panel yanıt vermiyor: journalctl -u kokpit -n 50"
