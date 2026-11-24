@@ -1,0 +1,73 @@
+# v ile başlayan bir etiket gönderilince (git tag v0.2.0 && git push --tags)
+# binary'leri derler ve GitHub Release oluşturur. Kurulu paneller bu sürümü görür.
+name: Sürüm yayınla
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Arayüzü derle
+        working-directory: web
+        run: npm ci --no-audit --no-fund && npm run build
+
+      - name: Testler
+        run: go vet ./... && go test ./...
+
+      - name: Binary'leri derle
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath \
+              -ldflags "-s -w -X main.Version=${VERSION} -X main.Repo=${GITHUB_REPOSITORY}" \
+              -o "dist/kokpit_linux_${arch}" .
+          done
+          sed "s#__REPO__#${GITHUB_REPOSITORY}#g" deploy/install.sh > dist/install.sh
+          cp deploy/sertlestir.sh deploy/config.env.example deploy/kokpit.service dist/
+          cd dist && sha256sum * > checksums.txt && cat checksums.txt
+
+      - name: Sürüm notlarını hazırla
+        run: |
+          # CHANGELOG.md içinde "## [x.y.z]" başlığı varsa o bölümü kullan
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" {p=1; next}
+            /^## \[/ && p {exit}
+            p {print}
+          ' CHANGELOG.md > notes.md || true
+          {
+            echo
+            echo "### Kurulum"
+            echo '```bash'
+            echo "curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/install.sh -o install.sh && sudo bash install.sh"
+            echo '```'
+            echo "Kurulu panel: **Güncellemeler** sayfası veya \`sudo kokpit guncelle\`"
+          } >> notes.md
+          cat notes.md
+
+      - name: GitHub Release oluştur
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRE=""
+          [[ "$GITHUB_REF_NAME" == *-* ]] && PRE="--prerelease"
+          gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file notes.md $PRE

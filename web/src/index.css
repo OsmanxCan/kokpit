@@ -1,0 +1,72 @@
+@import "tailwindcss";
+@import "@fontsource/ibm-plex-sans/latin-ext-400.css";
+@import "@fontsource/ibm-plex-sans/latin-ext-500.css";
+@import "@fontsource/ibm-plex-sans/latin-ext-600.css";
+@import "@fontsource/ibm-plex-sans/latin-400.css";
+@import "@fontsource/ibm-plex-sans/latin-500.css";
+@import "@fontsource/ibm-plex-sans/latin-600.css";
+@import "@fontsource/ibm-plex-mono/latin-400.css";
+
+/* Kokpit paleti: lacivert gece, amber sinyal, yeşil normal, kırmızı kritik */
+@theme {
+  --color-gece: #0e1621;
+  --color-panel: #15202e;
+  --color-panel2: #1a2738;
+  --color-cizgi: #24334a;
+  --color-metin: #d7e0ea;
+  --color-soluk: #8496ab;
+  --color-amber: #f2a93b;
+  --color-yesil: #3fb68b;
+  --color-kirmizi: #e5534b;
+  --color-mavi: #5b9bd5;
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+html {
+  background: var(--color-gece);
+  color: var(--color-metin);
+  font-family: var(--font-sans);
+  font-feature-settings: "tnum" 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-amber);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-amber) 35%, transparent);
+}
+
+* {
+  scrollbar-color: var(--color-cizgi) transparent;
+  scrollbar-width: thin;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Canlı nabız: üst bardaki tek sürekli hareket */
+@keyframes nabiz {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-yesil) 60%, transparent); }
+  70% { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.nabiz { animation: nabiz 2.4s ease-out infinite; }
+
+/* Göstergenin açılışta bir kez dolması */
+@keyframes dol { from { opacity: 0; } to { opacity: 1; } }
+.gosterge-dol { animation: dol .35s ease-out both; }

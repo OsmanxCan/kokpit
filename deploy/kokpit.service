@@ -1,0 +1,19 @@
+[Unit]
+Description=Kokpit (sunucu durumu, projeler, güvenlik)
+After=network-online.target docker.service pm2-root.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/kokpit/config.env
+ExecStart=/usr/local/bin/kokpit baslat
+Restart=always
+RestartSec=3
+User=root
+# Panel root çalışır (tam yetki); yine de bellek sınırı ve özel /tmp verelim
+PrivateTmp=true
+MemoryMax=200M
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

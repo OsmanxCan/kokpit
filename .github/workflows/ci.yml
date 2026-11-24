@@ -1,0 +1,31 @@
+name: Kontrol
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Arayüz
+        working-directory: web
+        run: npm ci --no-audit --no-fund && npm run build
+      - name: Go
+        run: |
+          test -z "$(gofmt -l .)" || { gofmt -l .; echo "gofmt gerekli"; exit 1; }
+          go vet ./...
+          go test ./...
+          CGO_ENABLED=0 go build -o /dev/null .
+      - name: Scriptler
+        run: bash -n deploy/install.sh && bash -n deploy/sertlestir.sh && bash -n build.sh

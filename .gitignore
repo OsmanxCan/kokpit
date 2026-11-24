@@ -1,0 +1,8 @@
+# derleme çıktıları
+/bin/
+/dist/
+web/node_modules/
+# geliştirme verisi (kullanıcı, oturum, 2FA sırrı içerir — ASLA commit etme)
+/.veri/
+*.tmp
+.env
