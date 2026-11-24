@@ -94,7 +94,7 @@ export function Overview() {
                 <li key={c.id} className="py-2.5 flex items-start gap-3">
                   <AlertTriangle size={16} className={`mt-0.5 shrink-0 ${c.level === 'critical' ? 'text-kirmizi' : c.level === 'warning' ? 'text-amber' : 'text-mavi'}`} />
                   <div className="min-w-0">
-                    <div>{c.title.replace(/ (kapalı|aktif|kurulu|yok|açık)$/, '')} — <span className="text-soluk">{c.detail}</span></div>
+                    <div>{c.title}: <span className="text-soluk">{c.detail}</span></div>
                   </div>
                 </li>
               ))}

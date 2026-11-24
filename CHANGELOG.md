@@ -3,6 +3,12 @@
 Bu dosyadaki her `## [sürüm]` bölümü, GitHub Release notu olarak otomatik kullanılır.
 Biçim: [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/), sürümleme: [SemVer](https://semver.org/lang/tr/).
 
+## [0.1.2] - 2026-11-24
+
+### Düzeltildi
+- Güvenlik kontrolleri hem "kurulu" hem "kurulu değil" gibi çelişkili görünüyordu: başlıklar artık sadece neyin kontrol edildiğini, yanındaki metin gerçek durumu gösteriyor
+- Fail2ban artık sadece kurulu olup olmadığına değil, servisin gerçekten çalışıp çalışmadığına da bakılarak kontrol ediliyor
+
 ## [0.1.1] - 2026-11-24
 
 ### Düzeltildi

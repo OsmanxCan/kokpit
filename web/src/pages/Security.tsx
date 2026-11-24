@@ -57,9 +57,9 @@ export function Security() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className={c.ok ? '' : 'font-medium'}>{c.title}</span>
+                      <span className={`text-sm ${c.ok ? 'text-yesil' : 'text-soluk'}`}>{c.detail}</span>
                       {!c.ok && <Tag tone={c.level === 'critical' ? 'kirmizi' : c.level === 'warning' ? 'amber' : 'mavi'}>{{ critical: 'kritik', warning: 'uyarı', info: 'öneri' }[c.level]}</Tag>}
                     </div>
-                    <div className="text-xs text-soluk mt-0.5 break-words">{c.detail}</div>
                     {!c.ok && <div className="text-xs mt-1 text-metin/80">Çözüm: {c.fix}</div>}
                   </div>
                 </li>
@@ -143,7 +143,7 @@ export function Security() {
             <span>UFW:</span>
             <Tag tone={data.ufw === 'active' ? 'yesil' : 'kirmizi'}>{data.ufw === 'active' ? 'açık' : data.ufw}</Tag>
             <span className="ml-3">Fail2ban:</span>
-            <Tag tone={data.fail2ban ? 'yesil' : 'kirmizi'}>{data.fail2ban ? 'kurulu' : 'kurulu değil'}</Tag>
+            <Tag tone={data.fail2ban ? 'yesil' : 'kirmizi'}>{data.fail2ban ? 'çalışıyor' : 'çalışmıyor'}</Tag>
             {data.ufwRules && <Button variant="hayalet" className="ml-auto" onClick={() => setShowRules((x) => !x)}>{showRules ? 'Kuralları gizle' : 'Kuralları göster'}</Button>}
           </div>
           {showRules && <pre className="font-mono text-xs bg-gece border border-cizgi rounded-md p-3 overflow-x-auto mb-3">{data.ufwRules}</pre>}
@@ -164,7 +164,7 @@ export function Security() {
                 </ul>
               )}
             </>
-          ) : <div className="text-sm text-soluk">IP engelleme için fail2ban kur: sertlestir.sh bunu yapar.</div>}
+          ) : <div className="text-sm text-soluk">IP engellemek için fail2ban kurulu ve çalışıyor olmalı.</div>}
           <div className="mt-4 pt-3 border-t border-cizgi text-sm flex flex-wrap gap-x-5 gap-y-1">
             <span>Güncellemeler: <b className={data.secUpdates ? 'text-amber font-medium' : 'font-medium'}>{data.updates}</b> <span className="text-soluk">({data.secUpdates} güvenlik)</span></span>
             <span>Yeniden başlatma: <b className="font-medium">{data.reboot ? 'gerekli' : 'gerekmiyor'}</b></span>

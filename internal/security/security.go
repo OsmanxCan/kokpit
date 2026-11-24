@@ -101,7 +101,17 @@ func (a *Analyzer) build() *Report {
 	sshd := sshdConfig()
 	r.Ports = ListeningPorts()
 	r.UFW, r.UFWRules = ufwStatus()
-	r.Fail2ban = execx.Exists("fail2ban-client")
+	f2bKurulu := execx.Exists("fail2ban-client") || fileExists("/usr/bin/fail2ban-client")
+	f2bDurum := "kurulu değil"
+	if f2bKurulu {
+		out, _ := execx.Run("systemctl", "is-active", "fail2ban")
+		if strings.TrimSpace(out) == "active" {
+			r.Fail2ban = true
+			f2bDurum = "çalışıyor"
+		} else {
+			f2bDurum = "kurulu ama servis çalışmıyor (" + strings.TrimSpace(out) + ")"
+		}
+	}
 	if r.Fail2ban {
 		r.Banned = Fail2banBanned()
 	}
@@ -118,18 +128,18 @@ func (a *Analyzer) build() *Report {
 	add := func(c Check) { r.Checks = append(r.Checks, c) }
 
 	pwd := strings.ToLower(sshd["passwordauthentication"])
-	add(Check{ID: "ssh_password", Title: "SSH şifre ile giriş kapalı", OK: pwd == "no", Level: "critical", Weight: 20,
-		Detail: "passwordauthentication = " + orDash(pwd),
+	add(Check{ID: "ssh_password", Title: "SSH'ta şifreyle giriş", OK: pwd == "no", Level: "critical", Weight: 20,
+		Detail: map[bool]string{true: "kapalı, sadece anahtarla girilebiliyor", false: "açık (passwordauthentication " + orDash(pwd) + ")"}[pwd == "no"],
 		Fix:    "SSH anahtarı ekleyip /etc/ssh/sshd_config.d/00-kokpit.conf içine 'PasswordAuthentication no' yaz (sertlestir.sh bunu yapar)."})
 	root := strings.ToLower(sshd["permitrootlogin"])
-	add(Check{ID: "ssh_root", Title: "Root SSH girişi sadece anahtarla", OK: root == "no" || root == "prohibit-password" || root == "without-password", Level: "critical", Weight: 15,
-		Detail: "permitrootlogin = " + orDash(root), Fix: "'PermitRootLogin prohibit-password' yap."})
-	add(Check{ID: "ssh_tries", Title: "SSH deneme sınırı düşük (MaxAuthTries ≤ 4)", OK: atoi(sshd["maxauthtries"]) > 0 && atoi(sshd["maxauthtries"]) <= 4, Level: "info", Weight: 3,
-		Detail: "maxauthtries = " + orDash(sshd["maxauthtries"]), Fix: "'MaxAuthTries 3' ekle."})
-	add(Check{ID: "firewall", Title: "Firewall (UFW) aktif", OK: r.UFW == "active", Level: "critical", Weight: 20,
-		Detail: "ufw: " + orDash(r.UFW), Fix: "sertlestir.sh ile kuralları ekleyip UFW'yi aç."})
-	add(Check{ID: "fail2ban", Title: "Brute-force koruması (fail2ban) kurulu", OK: r.Fail2ban, Level: "warning", Weight: 10,
-		Detail: map[bool]string{true: "kurulu", false: "kurulu değil"}[r.Fail2ban], Fix: "apt install fail2ban (sertlestir.sh yapar)."})
+	add(Check{ID: "ssh_root", Title: "Root kullanıcısıyla SSH girişi", OK: root == "no" || root == "prohibit-password" || root == "without-password", Level: "critical", Weight: 15,
+		Detail: map[string]string{"no": "kapalı", "prohibit-password": "sadece anahtarla", "without-password": "sadece anahtarla", "yes": "şifreyle de girilebiliyor"}[root] + " (permitrootlogin " + orDash(root) + ")", Fix: "'PermitRootLogin prohibit-password' yap."})
+	add(Check{ID: "ssh_tries", Title: "SSH deneme sınırı (MaxAuthTries)", OK: atoi(sshd["maxauthtries"]) > 0 && atoi(sshd["maxauthtries"]) <= 4, Level: "info", Weight: 3,
+		Detail: "bağlantı başına " + orDash(sshd["maxauthtries"]) + " deneme (önerilen: 3)", Fix: "'MaxAuthTries 3' ekle (sertlestir.sh yapar)."})
+	add(Check{ID: "firewall", Title: "Firewall (UFW)", OK: r.UFW == "active", Level: "critical", Weight: 20,
+		Detail: map[bool]string{true: "aktif", false: orDash(r.UFW)}[r.UFW == "active"], Fix: "sertlestir.sh ile kuralları ekleyip UFW'yi aç."})
+	add(Check{ID: "fail2ban", Title: "Kaba kuvvet koruması (fail2ban)", OK: r.Fail2ban, Level: "warning", Weight: 10,
+		Detail: f2bDurum, Fix: map[bool]string{true: "systemctl enable --now fail2ban; hata için: journalctl -u fail2ban -n 30", false: "apt install fail2ban (sertlestir.sh yapar)."}[f2bKurulu]})
 
 	var exposed []string
 	for _, p := range r.Ports {
@@ -137,20 +147,20 @@ func (a *Analyzer) build() *Report {
 			exposed = append(exposed, p.Proto+"/"+strconv.Itoa(p.Port)+" ("+p.Process+")")
 		}
 	}
-	add(Check{ID: "exposed_ports", Title: "Gereksiz yere dışarı açık uygulama portu yok", OK: len(exposed) == 0, Level: "warning", Weight: 10,
-		Detail: orDash(strings.Join(exposed, ", ")), Fix: "Uygulamayı 127.0.0.1'e bağla (örn. next start -H 127.0.0.1) veya firewall ile kapat."})
+	add(Check{ID: "exposed_ports", Title: "Dışarıya açık uygulama portları", OK: len(exposed) == 0, Level: "warning", Weight: 10,
+		Detail: map[bool]string{true: "yok", false: strings.Join(exposed, ", ")}[len(exposed) == 0], Fix: "Uygulamayı 127.0.0.1'e bağla (örn. next start -H 127.0.0.1) veya firewall ile kapat."})
 
-	add(Check{ID: "updates", Title: "Bekleyen güvenlik güncellemesi yok", OK: r.SecUpdates == 0, Level: "warning", Weight: 8,
-		Detail: strconv.Itoa(r.SecUpdates) + " güvenlik / " + strconv.Itoa(r.Updates) + " toplam güncelleme", Fix: "apt update && apt upgrade"})
-	add(Check{ID: "reboot", Title: "Yeniden başlatma beklemiyor", OK: !r.Reboot, Level: "info", Weight: 3,
-		Detail: map[bool]string{true: "çekirdek/kütüphane güncellemesi için reboot gerekiyor", false: "gerek yok"}[r.Reboot], Fix: "Uygun bir zamanda reboot."})
+	add(Check{ID: "updates", Title: "Güvenlik güncellemeleri", OK: r.SecUpdates == 0, Level: "warning", Weight: 8,
+		Detail: map[bool]string{true: "bekleyen yok", false: strconv.Itoa(r.SecUpdates) + " güvenlik güncellemesi bekliyor"}[r.SecUpdates == 0] + " (toplam " + strconv.Itoa(r.Updates) + " güncelleme)", Fix: "apt update && apt upgrade"})
+	add(Check{ID: "reboot", Title: "Yeniden başlatma", OK: !r.Reboot, Level: "info", Weight: 3,
+		Detail: map[bool]string{true: "çekirdek/kütüphane güncellemesi için reboot gerekiyor", false: "gerekmiyor"}[r.Reboot], Fix: "Uygun bir zamanda reboot."})
 	_, uaErr := os.Stat("/etc/apt/apt.conf.d/20auto-upgrades")
-	add(Check{ID: "auto_updates", Title: "Otomatik güvenlik güncellemeleri açık", OK: uaErr == nil, Level: "info", Weight: 4,
-		Detail: map[bool]string{true: "unattended-upgrades ayarlı", false: "ayarlı değil"}[uaErr == nil], Fix: "dpkg-reconfigure -plow unattended-upgrades"})
+	add(Check{ID: "auto_updates", Title: "Otomatik güvenlik güncellemeleri", OK: uaErr == nil, Level: "info", Weight: 4,
+		Detail: map[bool]string{true: "açık", false: "kapalı"}[uaErr == nil], Fix: "dpkg-reconfigure -plow unattended-upgrades"})
 	if a.RootPM2 != nil {
 		rp := a.RootPM2()
-		add(Check{ID: "pm2_root", Title: "Web uygulamaları root olarak çalışmıyor", OK: len(rp) == 0, Level: "warning", Weight: 7,
-			Detail: orDash(strings.Join(rp, ", ")), Fix: "Uygulamayı ayrı bir kullanıcıyla (örn. 'web') PM2 altında çalıştır."})
+		add(Check{ID: "pm2_root", Title: "Root olarak çalışan PM2 uygulamaları", OK: len(rp) == 0, Level: "warning", Weight: 7,
+			Detail: map[bool]string{true: "yok", false: strings.Join(rp, ", ")}[len(rp) == 0], Fix: "Uygulamayı ayrı bir kullanıcıyla (örn. 'web') PM2 altında çalıştır."})
 	}
 
 	total, got := 0, 0
@@ -176,6 +186,8 @@ func expectedPublic(p Port) bool {
 	}
 	return false
 }
+
+func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
 
 func orDash(s string) string {
 	if s == "" {
