@@ -1,7 +1,10 @@
 package server
 
 import (
+	"os"
+
 	"encoding/json"
+	"github.com/OsmanxCan/kokpit/internal/files"
 	"net/http"
 	"regexp"
 	"sort"
@@ -53,12 +56,15 @@ type settingsPatch struct {
 		ClearToken bool    `json:"clearToken"`
 		ChatID     *string `json:"chatId"`
 		Prefix     *bool   `json:"prefix"`
+		Commands   *bool   `json:"commands"`
 	} `json:"telegram"`
 	Thresholds    *settings.Thresholds      `json:"thresholds"`
 	Events        map[string]settings.Event `json:"events"`
 	WatchServices *[]string                 `json:"watchServices"`
 	SessionIPBind *bool                     `json:"sessionIpBind"`
 	UpdateCheck   *bool                     `json:"updateCheck"`
+	FileRoots     *[]files.Root             `json:"fileRoots"`
+	TerminalOff   *bool                     `json:"terminalOff"`
 }
 
 func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
@@ -120,6 +126,34 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if p.FileRoots != nil {
+		if len(*p.FileRoots) > 20 {
+			writeErr(w, 400, "En fazla 20 klasör eklenebilir")
+			return
+		}
+		seen := map[string]bool{}
+		for i := range *p.FileRoots {
+			fr := &(*p.FileRoots)[i]
+			if err := files.ValidateRoot(fr); err != nil {
+				writeErr(w, 400, err.Error())
+				return
+			}
+			if seen[fr.Name] {
+				writeErr(w, 400, "Aynı adda iki klasör olamaz: "+fr.Name)
+				return
+			}
+			seen[fr.Name] = true
+			if fi, err := os.Stat(fr.Path); err != nil || !fi.IsDir() {
+				if fr.Path == settings.DefaultStorage && os.IsNotExist(err) {
+					os.MkdirAll(fr.Path, 0o750)
+					continue
+				}
+				writeErr(w, 400, fr.Path+" bulunamadı veya bir klasör değil")
+				return
+			}
+		}
+	}
+
 	err := s.set.Update(func(c *settings.Settings) {
 		if t := p.Telegram; t != nil {
 			if t.ClearToken {
@@ -135,6 +169,10 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 			}
 			if t.Prefix != nil {
 				c.Telegram.Prefix = *t.Prefix
+			}
+			if t.Commands != nil && *t.Commands != c.Telegram.Commands {
+				c.Telegram.Commands = *t.Commands
+				changed = append(changed, map[bool]string{true: "telegram komutları açıldı", false: "telegram komutları kapatıldı"}[*t.Commands])
 			}
 		}
 		if p.Thresholds != nil {
@@ -160,6 +198,22 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 		if p.UpdateCheck != nil {
 			c.UpdateCheck = *p.UpdateCheck
 			changed = append(changed, "güncelleme kontrolü")
+		}
+		if p.FileRoots != nil {
+			c.FileRoots = *p.FileRoots
+			var ns []string
+			for _, r := range c.FileRoots {
+				ns = append(ns, r.Path)
+			}
+			changed = append(changed, "dosya klasörleri ("+strings.Join(ns, ", ")+")")
+		}
+		if p.TerminalOff != nil {
+			c.TerminalOff = *p.TerminalOff
+			if c.TerminalOff {
+				changed = append(changed, "terminal kapatıldı")
+			} else {
+				changed = append(changed, "terminal açıldı")
+			}
 		}
 	})
 	si := sess(r)

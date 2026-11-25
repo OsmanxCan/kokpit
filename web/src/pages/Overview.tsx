@@ -82,6 +82,7 @@ export function Overview() {
   if (!data) return <Loading />
   const s = live ?? data.system
   const sec = data.security
+  const up = data.uptime
   const failed = sec.failed ?? []
   const problems = data.problems ?? []
   const soonCerts = (data.sites ?? []).filter((x) => x.certExpiry > 0 && daysLeft(x.certExpiry) < 21)
@@ -120,12 +121,19 @@ export function Overview() {
         </Card>
 
         <Card className="lg:col-span-2">
-          <CardHeader title="Dikkat gerektirenler" description={failed.length + problems.length + soonCerts.length ? 'Çözülmesi önerilen konular' : undefined} />
+          <CardHeader title="Dikkat gerektirenler" description={failed.length + problems.length + soonCerts.length + (up?.down ?? 0) ? 'Çözülmesi önerilen konular' : undefined} />
           <CardContent>
-            {failed.length === 0 && problems.length === 0 && soonCerts.length === 0 ? (
+            {failed.length === 0 && problems.length === 0 && soonCerts.length === 0 && !up?.down ? (
               <div className="flex items-center gap-2 py-3 text-success"><CheckCircle2 size={18} /> Her şey yolunda görünüyor.</div>
             ) : (
               <ul className="divide-y rounded-lg border">
+                {up && up.down > 0 && (
+                  <li className="flex items-center gap-3 px-4 py-2.5">
+                    <Dot ok={false} />
+                    <div className="min-w-0 flex-1 truncate text-sm font-medium">{up.down} site erişilemiyor</div>
+                    <Link to="/uptime" className="text-sm text-muted-foreground hover:text-foreground">Aç</Link>
+                  </li>
+                )}
                 {problems.map((p) => (
                   <li key={p.kind + p.name} className="flex items-center gap-3 px-4 py-2.5">
                     <Dot ok={false} />
@@ -174,6 +182,18 @@ export function Overview() {
                 </div>
               )
             })}
+            {up && up.total > 0 && (
+              <Link to="/uptime" className="flex items-center justify-between rounded-lg border px-4 py-3 hover:bg-muted/50">
+                <div>
+                  <div className="text-sm font-medium">İzlenen siteler</div>
+                  <div className="text-xs text-muted-foreground">{up.down ? `${up.down} tanesi erişilemiyor` : 'hepsi erişilebilir'}</div>
+                </div>
+                <div className="text-xl font-semibold tabular-nums">
+                  <span className={up.down ? 'text-destructive' : ''}>{up.up}</span>
+                  <span className="text-base text-muted-foreground">/{up.total}</span>
+                </div>
+              </Link>
+            )}
           </CardContent>
         </Card>
 

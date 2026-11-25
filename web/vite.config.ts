@@ -6,7 +6,7 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    proxy: { '/api': { target: 'http://127.0.0.1:3100', changeOrigin: false } },
+    proxy: { '/api': { target: 'http://127.0.0.1:3100', changeOrigin: false, ws: true } },
   },
   build: { outDir: 'dist', emptyOutDir: true, chunkSizeWarningLimit: 800 },
 })

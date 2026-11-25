@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { api, setUnauthorizedHandler, type Me } from './lib/api'
 import { Layout } from './components/Layout'
@@ -13,6 +13,14 @@ import { Alerts } from './pages/Alerts'
 import { Audit } from './pages/Audit'
 import { Updates } from './pages/Updates'
 import { Settings } from './pages/Settings'
+import { Uptime } from './pages/Uptime'
+import { Firewall } from './pages/Firewall'
+import { Attacks } from './pages/Attacks'
+import { Files } from './pages/Files'
+import { Deploy } from './pages/Deploy'
+
+// xterm büyük olduğu için terminal sayfası ayrı yüklenir
+const Terminal = lazy(() => import('./pages/Terminal').then((m) => ({ default: m.Terminal })))
 
 
 export default function App() {
@@ -40,6 +48,12 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Overview />} />
           <Route path="/sistem" element={<System />} />
+          <Route path="/uptime" element={<Uptime />} />
+          <Route path="/firewall" element={<Firewall />} />
+          <Route path="/saldirilar" element={<Attacks />} />
+          <Route path="/deploy" element={<Deploy />} />
+          <Route path="/dosyalar" element={<Files />} />
+          <Route path="/terminal" element={<Suspense fallback={<Loading />}><Terminal /></Suspense>} />
           <Route path="/projeler" element={<Projects />} />
           <Route path="/siteler" element={<Sites />} />
           <Route path="/guvenlik" element={<Security />} />

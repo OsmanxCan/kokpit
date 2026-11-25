@@ -67,6 +67,30 @@ var Events = []EventDef{
 		Template: "🟡 <b>{{container}} container'ı çalışmıyor</b>\nDurum: {{durum}}",
 		Vars:     []Var{{"container", "Container adı", "amnezia-xray"}, {"durum", "Docker durumu", "exited"}}},
 
+	// --- Deploy
+	{ID: "deploy_ok", Group: "Deploy", Name: "Deploy tamamlandı", Level: "ok", DefaultOn: true, Cooldown: 0,
+		Desc:     "Bir proje başarıyla deploy edildiğinde",
+		Template: "🚀 <b>{{proje}}</b> deploy edildi\n{{commit}} · {{mesaj}}\nSüre: {{sure}} · {{kim}}",
+		Vars:     []Var{{"proje", "Proje adı", "CanTools"}, {"commit", "Yeni sürüm (kısa commit)", "2c83137"}, {"mesaj", "Commit mesajı", "Arama düzeltildi"}, {"sure", "Süre", "1 dk 12 sn"}, {"kim", "Başlatan", "Can (panel)"}}},
+	{ID: "deploy_failed", Group: "Deploy", Name: "Deploy başarısız", Level: "critical", DefaultOn: true, Cooldown: 0,
+		Desc:     "Deploy hata verdiğinde (otomatik geri alındıysa belirtilir)",
+		Template: "❌ <b>{{proje}}</b> deploy başarısız\n{{hata}}\n{{durum}}",
+		Vars:     []Var{{"proje", "Proje adı", "CanTools"}, {"hata", "Hata", "derle adımı başarısız: çıkış kodu 1"}, {"durum", "Geri alma durumu", "Önceki sürüme geri dönüldü"}, {"kim", "Başlatan", "Can (panel)"}}},
+
+	// --- Uptime
+	{ID: "site_down", Group: "Uptime", Name: "Site çöktü", Level: "critical", DefaultOn: true, Cooldown: 1,
+		Desc:     "İzlenen bir site art arda 2 kontrolde yanıt vermediğinde",
+		Template: "🔴 <b>{{site}} erişilemiyor</b>\nAdres: {{adres}}\nSebep: {{sebep}}",
+		Vars:     []Var{{"site", "İzleyicinin adı", "CanTools"}, {"adres", "Kontrol edilen adres", "https://cantools.ocbstd.com"}, {"sebep", "Hata", "HTTP 502"}}},
+	{ID: "site_up", Group: "Uptime", Name: "Site düzeldi", Level: "ok", DefaultOn: true, Cooldown: 1,
+		Desc:     "Çöken bir site tekrar yanıt verdiğinde",
+		Template: "🟢 <b>{{site}}</b> tekrar erişilebilir\nKesinti süresi: {{sure}}",
+		Vars:     []Var{{"site", "İzleyicinin adı", "CanTools"}, {"adres", "Kontrol edilen adres", "https://cantools.ocbstd.com"}, {"sure", "Kesinti süresi", "4 dk"}}},
+	{ID: "ssl_expiring", Group: "Uptime", Name: "SSL sertifikası bitiyor", Level: "warning", DefaultOn: true, Cooldown: 1440,
+		Desc:     "İzlenen bir sitenin SSL sertifikasının bitmesine 14 gün veya daha az kaldığında",
+		Template: "🟡 <b>{{site}}</b> SSL sertifikasının bitmesine <b>{{gun}} gün</b> kaldı",
+		Vars:     []Var{{"site", "İzleyicinin adı", "CanTools"}, {"adres", "Kontrol edilen adres", "https://cantools.ocbstd.com"}, {"gun", "Kalan gün", "9"}}},
+
 	// --- Güvenlik
 	{ID: "ssh_new_ip", Group: "Güvenlik", Name: "Yeni IP'den SSH girişi", Level: "critical", DefaultOn: true, Cooldown: 1,
 		Desc:     "Daha önce hiç görülmemiş bir IP adresinden SSH ile başarılı giriş yapıldığında",
@@ -83,6 +107,10 @@ var Events = []EventDef{
 	{ID: "panel_login", Group: "Güvenlik", Name: "Panele giriş", Level: "info", DefaultOn: true, Cooldown: 30,
 		Desc:     "Kokpit'e başarıyla giriş yapıldığında",
 		Template: "🔵 Kokpit'e giriş yapıldı: {{kullanici}} @ {{ip}}",
+		Vars:     []Var{{"kullanici", "Panel kullanıcısı", "Can"}, {"ip", "IP adresi", "78.173.36.157"}}},
+	{ID: "terminal_open", Group: "Güvenlik", Name: "Web terminali açıldı", Level: "warning", DefaultOn: true, Cooldown: 0,
+		Desc:     "Panelden sunucuda bir terminal (root kabuğu) açıldığında",
+		Template: "🖥 <b>{{kullanici}}</b> panelden terminal açtı\nIP: {{ip}}",
 		Vars:     []Var{{"kullanici", "Panel kullanıcısı", "Can"}, {"ip", "IP adresi", "78.173.36.157"}}},
 	{ID: "panel_login_fail", Group: "Güvenlik", Name: "Hatalı panel girişi", Level: "warning", DefaultOn: true, Cooldown: 10,
 		Desc:     "Bir IP panele 3 veya daha fazla kez hatalı giriş denediğinde",

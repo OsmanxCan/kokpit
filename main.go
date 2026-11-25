@@ -26,13 +26,17 @@ import (
 	"github.com/OsmanxCan/kokpit/internal/alerts"
 	"github.com/OsmanxCan/kokpit/internal/config"
 	"github.com/OsmanxCan/kokpit/internal/crypt"
+	"github.com/OsmanxCan/kokpit/internal/deploy"
+	"github.com/OsmanxCan/kokpit/internal/geoip"
 	"github.com/OsmanxCan/kokpit/internal/security"
 	"github.com/OsmanxCan/kokpit/internal/server"
 	"github.com/OsmanxCan/kokpit/internal/services"
 	"github.com/OsmanxCan/kokpit/internal/settings"
 	"github.com/OsmanxCan/kokpit/internal/store"
 	"github.com/OsmanxCan/kokpit/internal/system"
+	"github.com/OsmanxCan/kokpit/internal/telegram"
 	"github.com/OsmanxCan/kokpit/internal/update"
+	"github.com/OsmanxCan/kokpit/internal/uptime"
 	"github.com/OsmanxCan/kokpit/web"
 )
 
@@ -118,7 +122,74 @@ func serve(cfg *config.Config) {
 		}
 	}()
 
-	srv := server.New(cfg, st, set, sys, svc, sec, al, upd, web.Dist())
+	// varsayılan depolama klasörü (dosya gezgini) yoksa oluştur
+	for _, r := range set.Get().FileRoots {
+		if r.Path == settings.DefaultStorage {
+			os.MkdirAll(r.Path, 0o750)
+		}
+	}
+
+	up, err := uptime.Open(cfg.DataDir)
+	if err != nil {
+		log.Fatalf("uptime verisi okunamadı: %v", err)
+	}
+	up.OnEvent = func(ev uptime.Event) {
+		m := ev.Monitor
+		vars := map[string]string{"site": m.Name, "adres": m.URL}
+		switch ev.Kind {
+		case "down":
+			vars["sebep"] = ev.Reason
+			al.Fire("site_down", m.ID, vars)
+		case "up":
+			vars["sure"] = humanDuration(ev.Down)
+			al.Fire("site_up", m.ID, vars)
+		case "ssl":
+			vars["gun"] = fmt.Sprint(ev.Days)
+			al.Fire("ssl_expiring", m.ID, vars)
+		}
+	}
+	up.Start()
+
+	geo := geoip.Open(cfg.DataDir)
+	geo.Start()
+
+	dep, err := deploy.Open(cfg.DataDir)
+	if err != nil {
+		log.Fatalf("deploy verisi okunamadı: %v", err)
+	}
+	dep.Restart = func(name string) error {
+		if _, err := svc.Action("pm2", name, "reload"); err != nil {
+			out, err2 := svc.Action("pm2", name, "restart")
+			if err2 != nil {
+				return fmt.Errorf("%v %s", err2, out)
+			}
+		}
+		return nil
+	}
+	dep.OnFinish = func(ev deploy.Event) {
+		r := ev.Run
+		kim := r.User + " (" + map[string]string{"telegram": "Telegram"}[r.Trigger] + ")"
+		if r.Trigger != "telegram" {
+			kim = r.User + " (panel)"
+		}
+		vars := map[string]string{"proje": ev.Project.Name, "kim": kim}
+		switch r.Status {
+		case "ok":
+			vars["commit"] = shortCommit(r.To)
+			vars["mesaj"] = r.Message
+			vars["sure"] = humanDuration(time.Duration(r.End-r.Start) * time.Second)
+			al.Fire("deploy_ok", r.ID, vars)
+		case "failed", "rolled_back":
+			vars["hata"] = r.Error
+			vars["durum"] = map[bool]string{true: "Önceki sürüme geri dönüldü", false: "Geri alınmadı"}[r.Status == "rolled_back"]
+			al.Fire("deploy_failed", r.ID, vars)
+		}
+	}
+
+	bot := telegram.New(set, st, sys, svc, up, dep)
+	bot.Start()
+
+	srv := server.New(cfg, st, set, sys, svc, sec, al, upd, web.Dist(), up, geo, dep, bot)
 	hs := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           srv.Handler(),
@@ -141,6 +212,7 @@ func serve(cfg *config.Config) {
 	defer cancel()
 	hs.Shutdown(ctx)
 	st.Flush()
+	up.Flush()
 }
 
 func prompt(r *bufio.Reader, label string) string {
@@ -256,4 +328,25 @@ func selfUpdate(cfg *config.Config) {
 	} else {
 		fmt.Println("✓ Servis yeniden başlatıldı")
 	}
+}
+
+// humanDuration "1 saat 5 dk" biçiminde süre.
+func humanDuration(d time.Duration) string {
+	m := int(d.Minutes())
+	switch {
+	case m < 1:
+		return fmt.Sprintf("%d sn", int(d.Seconds()))
+	case m < 60:
+		return fmt.Sprintf("%d dk", m)
+	case m < 1440:
+		return fmt.Sprintf("%d saat %d dk", m/60, m%60)
+	}
+	return fmt.Sprintf("%d gün %d saat", m/1440, (m%1440)/60)
+}
+
+func shortCommit(c string) string {
+	if len(c) > 7 {
+		return c[:7]
+	}
+	return c
 }

@@ -3,23 +3,25 @@ import { useSearchParams } from 'react-router-dom'
 import QRCode from 'qrcode'
 import {
   SlidersHorizontal, Send, BellRing, Server, UserRound, Users, Check, RotateCcw, Copy, Trash2, Plus, KeyRound, ShieldCheck, Search,
-  PenLine, X, Bold, Italic, Code, Braces, Timer,
+  PenLine, X, Bold, Italic, Code, Braces, Timer, FolderOpen, Lock,
 } from 'lucide-react'
-import { api, type EventDef, type SettingsT, type UserT, type VarDef } from '../lib/api'
+import { api, type EventDef, type FileRoot, type SettingsT, type TelegramStatus, type UserT, type VarDef } from '../lib/api'
 import { usePoll } from '../lib/hooks'
+import { GrantDialog, RootDialog } from '../components/FolderAccess'
 import { dateTime } from '../lib/format'
 import {
   Card, CardHeader, CardContent, CardFooter, Button, ConfirmButton, Input, Field, Switch, Tag, Alert,
   ErrorBox, Loading, Dialog, Separator, toast, cn,
 } from '../components/ui'
 
-type TabId = 'genel' | 'telegram' | 'bildirimler' | 'servisler' | 'hesap' | 'kullanicilar'
+type TabId = 'genel' | 'telegram' | 'bildirimler' | 'servisler' | 'dosyalar' | 'hesap' | 'kullanicilar'
 
 const tabs: { id: TabId; label: string; icon: typeof Send; desc: string }[] = [
   { id: 'genel', label: 'Genel', icon: SlidersHorizontal, desc: 'Uyarı eşikleri, oturum ve güncelleme' },
   { id: 'telegram', label: 'Telegram', icon: Send, desc: 'Bot bağlantısı' },
   { id: 'bildirimler', label: 'Bildirimler', icon: BellRing, desc: 'Olaylar ve mesaj şablonları' },
   { id: 'servisler', label: 'İzlenen servisler', icon: Server, desc: 'Çökünce haber verilecek servisler' },
+  { id: 'dosyalar', label: 'Dosyalar ve terminal', icon: FolderOpen, desc: 'Dosya gezgininde açılabilen klasörler ve web terminali' },
   { id: 'hesap', label: 'Hesabım', icon: UserRound, desc: 'Şifre ve iki adımlı doğrulama' },
   { id: 'kullanicilar', label: 'Kullanıcılar', icon: Users, desc: 'Panele erişebilen kişiler' },
 ]
@@ -80,12 +82,77 @@ export function Settings() {
               {tab === 'telegram' && <TelegramTab s={data} onSaved={setData} />}
               {tab === 'bildirimler' && <EventsTab s={data} onSaved={setData} />}
               {tab === 'servisler' && <ServicesTab onSaved={setData} />}
+              {tab === 'dosyalar' && <FilesTab s={data} onSaved={setData} />}
               {tab === 'hesap' && <AccountTab />}
               {tab === 'kullanicilar' && <UsersTab />}
             </>
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ======================================================================= Dosyalar
+
+function FilesTab({ s, onSaved }: { s: SettingsT; onSaved: (s: SettingsT) => void }) {
+  const [roots, setRoots] = useState<FileRoot[]>(s.fileRoots)
+  const [term, setTerm] = useState(!s.terminalOff)
+  const [busy, setBusy] = useState(false)
+  const [grant, setGrant] = useState(false)
+  const [edit, setEdit] = useState<FileRoot | null>(null)
+  const update = (r: FileRoot[]) => { setRoots(r); onSaved({ ...s, fileRoots: r }) }
+
+  async function saveTerm(v: boolean) {
+    setBusy(true)
+    const r = await save({ terminalOff: !v })
+    if (r) { onSaved(r); setTerm(!r.terminalOff) }
+    setBusy(false)
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader title="Klasör erişimleri" description="Dosya gezgini sadece burada izin verdiğin klasörleri açar ve dışına çıkamaz. Okuma her zaman vardır; yazma ve silme ayrı ayrı verilir."
+          action={<Button size="sm" variant="default" onClick={() => setGrant(true)}><Plus size={14} /> Erişim ver</Button>} />
+        <CardContent>
+          {roots.length === 0 ? <div className="rounded-lg border border-dashed py-6 text-center text-sm text-muted-foreground">Hiçbir klasöre erişim verilmemiş; dosya gezgini kapalı.</div> : (
+            <ul className="divide-y rounded-lg border">
+              {roots.map((r) => (
+                <li key={r.name} className="flex flex-wrap items-center gap-3 px-4 py-2.5">
+                  {r.write ? <FolderOpen size={16} className="text-muted-foreground" /> : <Lock size={16} className="text-muted-foreground" />}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium">{r.name}</div>
+                    <div className="truncate font-mono text-xs text-muted-foreground">{r.path}</div>
+                  </div>
+                  <div className="flex gap-1">
+                    <Tag tone="soluk">okuma</Tag>
+                    {r.write && <Tag tone="mavi">yazma</Tag>}
+                    {r.delete && <Tag tone="amber">silme</Tag>}
+                  </div>
+                  <Button size="sm" variant="ghost" onClick={() => setEdit(r)}>Düzenle</Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader title="Web terminali" />
+        <CardContent>
+          <label className="flex items-start justify-between gap-6 cursor-pointer">
+            <div>
+              <div className="text-sm font-medium">Terminal açık</div>
+              <p className="text-sm text-muted-foreground">Panelden sunucuda root yetkili bir kabuk açılabilir. Her açılış işlem kayıtlarına yazılır ve Telegram'a bildirilir; 15 dakika işlem yapılmazsa kapanır.</p>
+            </div>
+            <Switch checked={term} onChange={saveTerm} disabled={busy} />
+          </label>
+        </CardContent>
+      </Card>
+
+      <GrantDialog open={grant} onClose={() => setGrant(false)} onDone={(r) => update(r)} />
+      <RootDialog root={edit} onClose={() => setEdit(null)} onDone={update} />
     </div>
   )
 }
@@ -231,6 +298,8 @@ function TelegramTab({ s, onSaved }: { s: SettingsT; onSaved: (s: SettingsT) => 
         </CardFooter>
       </Card>
 
+      <CommandsCard s={s} onSaved={onSaved} />
+
       <Card>
         <CardHeader title="Bot nasıl oluşturulur?" />
         <CardContent>
@@ -251,6 +320,54 @@ function TelegramTab({ s, onSaved }: { s: SettingsT; onSaved: (s: SettingsT) => 
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+function CommandsCard({ s, onSaved }: { s: SettingsT; onSaved: (s: SettingsT) => void }) {
+  const [busy, setBusy] = useState(false)
+  const { data: st } = usePoll<TelegramStatus>('/api/telegram/status', 5000)
+  const ready = s.tokenSet && !!s.telegram.chatId
+  async function toggle(v: boolean) {
+    setBusy(true)
+    const r = await save({ telegram: { commands: v } })
+    if (r) onSaved(r)
+    setBusy(false)
+  }
+  const on = s.telegram.commands
+  return (
+    <Card>
+      <CardHeader title="Telegram'dan komutlar"
+        description="Açıksa bota yazarak sunucunun durumunu görebilir, deploy başlatabilir ve PM2 uygulamalarını yeniden başlatabilirsin."
+        action={on ? (st?.running ? <Tag tone="yesil">Dinliyor {st.bot}</Tag> : st?.error ? <Tag tone="kirmizi">Hata</Tag> : <Tag tone="amber">Bağlanıyor</Tag>) : <Tag>Kapalı</Tag>} />
+      <CardContent className="space-y-4">
+        <label className="flex items-start justify-between gap-6 cursor-pointer">
+          <div className="space-y-1">
+            <div className="text-sm font-medium">Komutları aç</div>
+            <p className="text-[13px] text-muted-foreground">Sadece yukarıdaki Chat ID'den gelen mesajlara yanıt verilir; başka biri bota yazsa da hiçbir şey yapılmaz. İşlem yapan her komut önce onay butonu ister.</p>
+          </div>
+          <Switch checked={on} onChange={toggle} disabled={busy || !ready} label="Telegram komutları" />
+        </label>
+        {!ready && <p className="text-sm text-muted-foreground">Önce bot token ve Chat ID'yi kaydet.</p>}
+        {on && st?.error && <ErrorBox>{st.error}</ErrorBox>}
+        {on && (
+          <div className="rounded-lg border">
+            {[
+              ['/durum', 'CPU, RAM, disk, PM2 ve site özeti'],
+              ['/servisler', 'PM2 uygulamaları ve durumları'],
+              ['/siteler', 'Uptime izleyicileri'],
+              ['/deploy', 'Proje seç → onayla → deploy (sadece izin verilen projeler)'],
+              ['/yenidenbaslat', 'PM2 uygulaması seç → onayla → yeniden başlat'],
+            ].map(([c, d]) => (
+              <div key={c} className="flex gap-3 border-b px-4 py-2 text-sm last:border-0">
+                <span className="w-32 shrink-0 font-mono text-[13px]">{c}</span>
+                <span className="text-muted-foreground">{d}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {on && st && st.ignored > 0 && <p className="text-xs text-muted-foreground">Başka sohbetlerden gelen {st.ignored} mesaj yok sayıldı.</p>}
+      </CardContent>
+    </Card>
   )
 }
 

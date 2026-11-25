@@ -31,6 +31,8 @@ async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
 export const api = {
   get: <T>(url: string) => req<T>('GET', url),
   post: <T>(url: string, body?: unknown) => req<T>('POST', url, body ?? {}),
+  put: <T>(url: string, body?: unknown) => req<T>('PUT', url, body ?? {}),
+  del: <T>(url: string, body?: unknown) => req<T>('DELETE', url, body ?? {}),
 }
 
 // ---- tipler ----
@@ -83,6 +85,7 @@ export interface Overview {
   security: { score: number; failed: Check[] | null; sshFail24h: number; banned: number; ufw: string }
   alerts: Alert[]
   sites: Site[] | null
+  uptime?: { total: number; up: number; down: number }
 }
 
 export interface UpdateStatus {
@@ -101,12 +104,14 @@ export interface Me {
 export interface EventSetting { enabled: boolean; telegram: boolean; cooldown: number; template: string }
 export interface Thresholds { cpu: number; cpuMinutes: number; ram: number; ramMinutes: number; disk: number; sshBrute: number }
 export interface SettingsT {
-  telegram: { token: string; chatId: string; prefix: boolean }
+  telegram: { token: string; chatId: string; prefix: boolean; commands: boolean }
   thresholds: Thresholds
   events: Record<string, EventSetting>
   watchServices: string[]
   sessionIpBind: boolean
   updateCheck: boolean
+  fileRoots: FileRoot[]
+  terminalOff: boolean
   tokenSet: boolean
   tokenMasked: string
 }
@@ -116,3 +121,61 @@ export interface EventDef {
   defaultOn: boolean; defaultCooldown: number; defaultTemplate: string; vars: VarDef[]
 }
 export interface UserT { username: string; createdAt: number; updatedAt: number }
+
+// ---- firewall ----
+
+export interface FwRule { num: number; to: string; action: string; from: string; comment: string; v6: boolean; ssh: boolean }
+export interface FwStatus {
+  installed: boolean; active: boolean; incoming: string; outgoing: string; routed: string
+  rules: FwRule[] | null; sshPort: number; sshAllowed: boolean; rollback: number; raw: string
+}
+
+// ---- uptime ----
+
+export interface Monitor {
+  id: string; name: string; url: string; interval: number; timeout: number; expect: number; keyword: string
+  enabled: boolean; createdAt: number
+}
+export interface UpBar { ts: number; uptime: number; avgMs: number }
+export interface UpSummary extends Monitor {
+  status: 'up' | 'down' | 'pending' | 'paused'; since: number
+  uptime24: number; uptime7: number; uptime30: number; avgMs: number; lastMs: number
+  lastError: string; lastCheck: number; certExp: number; certIssuer: string; bars: UpBar[]
+}
+export interface UpCheck { ts: number; ok: boolean; ms: number; status: number; error?: string }
+export interface UpDetail extends UpSummary {
+  checks: UpCheck[]; hours: { ts: number; total: number; up: number; sumMs: number }[]
+  incidents: { start: number; end: number; reason: string }[]
+}
+
+// ---- saldırı haritası ----
+
+export interface GeoStatus { ready: boolean; loading: boolean; updated: number; ranges: number; source: string; error?: string }
+export interface AttackReport {
+  range: '24h' | '7d'; generated: number; total: number; uniqueIps: number; accepted: number
+  countries: { cc: string; count: number; ips: number }[]
+  topIps: { ip: string; cc: string; count: number; users: string; last: number; banned: boolean }[]
+  hourly: number[]
+  geo: GeoStatus
+}
+
+// ---- dosyalar ----
+
+export interface FileRoot { name: string; path: string; write: boolean; delete: boolean }
+export interface FileEntry { name: string; dir: boolean; size: number; mtime: number; mode: string; link: boolean; outside?: boolean; uid: number }
+export interface FileListing { path: string; entries: FileEntry[]; write: boolean; delete: boolean; free: number; total: number }
+export interface TextFileT { path: string; content: string; mtime: string; size: number; binary: boolean; tooBig: boolean }
+
+// ---- deploy ----
+
+export interface DeployStep { name: string; cmd: string }
+export interface DeployProject {
+  id: string; name: string; dir: string; branch: string; steps: DeployStep[]; pm2: string; healthUrl: string
+  autoRollback: boolean; telegram: boolean; runAs: string; createdAt: number
+}
+export interface DeployRun {
+  id: string; project: string; status: 'running' | 'ok' | 'failed' | 'rolled_back' | 'canceled'; trigger: string; user: string
+  start: number; end: number; from: string; to: string; message: string; target: string; error?: string; step: string
+}
+export interface DeployItem extends DeployProject { busy: string; last: DeployRun | null; git: { hash?: string; subject?: string; time?: string; remote?: string } }
+export interface TelegramStatus { running: boolean; bot: string; error?: string; lastSeen: number; ignored: number }

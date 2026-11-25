@@ -19,6 +19,18 @@ Sunucunun durumunu, çalışan projelerini ve güvenliğini tek ekrandan izler; 
 <p align="center">
   <img src="docs/ekran/sablon.png" alt="Bildirim şablonu düzenleyici" width="820">
 </p>
+<p align="center">
+  <img src="docs/ekran/saldiri.png" alt="Saldırı haritası" width="820">
+</p>
+<p align="center">
+  <img src="docs/ekran/deploy.png" alt="Deploy çıktısı" width="820">
+</p>
+<p align="center">
+  <img src="docs/ekran/dosyalar.png" alt="Dosya gezgini" width="820">
+</p>
+<p align="center">
+  <img src="docs/ekran/uptime.png" alt="Uptime izleme" width="820">
+</p>
 
 ## Özellikler
 
@@ -26,8 +38,15 @@ Sunucunun durumunu, çalışan projelerini ve güvenliğini tek ekrandan izler; 
 |---|---|
 | **Sistem** | CPU, RAM, swap, disk, ağ, load, sıcaklık · canlı ve 7 günlük grafikler · en çok kaynak harcayan süreçler |
 | **Projeler** | PM2 süreçleri, Docker container'ları, systemd servisleri · başlat / durdur / yeniden başlat · canlı log (arama, duraklatma) |
+| **Uptime** | Siteleri dakikada bir kontrol eder · 24 saat / 7 gün / 30 gün erişilebilirlik · yanıt süresi grafiği · kesinti geçmişi · SSL bitiş uyarısı |
+| **Deploy** | Tek tıkla git pull → derleme → PM2 yeniden başlatma → sağlık kontrolü · canlı çıktı · hata olursa otomatik geri alma · istenen sürüme dönüş |
+| **Dosyalar** | İzin verilen klasörlerde dosya gezgini · sürükle bırak yükleme (büyük dosyalar parça parça, kaldığı yerden devam) · düzenleme · önizleme · zip indirme |
+| **Telegram** | Bildirimler ve isteğe bağlı komutlar: `/durum`, `/siteler`, `/deploy` (onay butonlu) · sadece senin sohbetin |
+| **Terminal** | Tarayıcıdan sunucu kabuğu · 15 dk boşta kapanır · her açılış kaydedilir ve Telegram'a bildirilir |
 | **Siteler** | Nginx domainleri ve yönlendikleri port · SSL bitiş tarihleri · yanıt süresi kontrolü · `nginx -t` ve reload |
-| **Güvenlik** | 0–100 güvenlik skoru ve çözüm önerileri · SSH saldırıları ve başarılı girişler · açık portlar · UFW · fail2ban ile IP engelleme · bekleyen güncellemeler |
+| **Güvenlik** | 0–100 güvenlik skoru ve çözüm önerileri · SSH saldırıları ve başarılı girişler · açık portlar · fail2ban ile IP engelleme · bekleyen güncellemeler |
+| **Firewall** | UFW kurallarını ekleme / silme · açarken otomatik geri alma (onaylamazsan kendiliğinden kapanır) · SSH'ı kilitlemeye karşı koruma |
+| **Saldırı haritası** | SSH saldırılarının ülkelere göre dünya haritası · en çok deneyen IP'ler · ülke verisi sunucuda yerel (DB-IP Lite) |
 | **Bildirimler** | Telegram: servis çöktü, disk doluyor, CPU/RAM yüksek, **yeni IP'den SSH girişi**, panele hatalı giriş, yeni sürüm · her olay için düzenlenebilir mesaj şablonu ve canlı önizleme |
 | **Ayarlar** | Her şey panelden: Telegram, eşikler, izlenen servisler, şifre ve 2FA, kullanıcılar · açık/koyu tema |
 | **Kayıtlar** | Panelde yapılan her işlem (kim, ne zaman, hangi IP) · açık oturumlar |
@@ -79,6 +98,10 @@ git clone https://github.com/OsmanxCan/kokpit && cd kokpit
 ## Lisans
 
 [MIT](LICENSE)
+
+Üçüncü taraf veriler:
+- Ülke veritabanı: [IP Geolocation by DB-IP](https://db-ip.com) (CC BY 4.0), sunucuya ayda bir indirilir
+- Dünya haritası: [svg-maps/world](https://github.com/VictorCazanave/svg-maps) (CC BY 4.0), boyutu küçültülerek kullanılıyor
 
 ---
 

@@ -12,12 +12,14 @@ import (
 	"sync"
 
 	"github.com/OsmanxCan/kokpit/internal/config"
+	"github.com/OsmanxCan/kokpit/internal/files"
 )
 
 type Telegram struct {
-	Token  string `json:"token"`
-	ChatID string `json:"chatId"`
-	Prefix bool   `json:"prefix"` // mesajların başına sunucu adını ekle
+	Token    string `json:"token"`
+	ChatID   string `json:"chatId"`
+	Prefix   bool   `json:"prefix"`   // mesajların başına sunucu adını ekle
+	Commands bool   `json:"commands"` // Telegram'dan komut ve buton ile işlem (varsayılan kapalı)
 }
 
 type Thresholds struct {
@@ -44,6 +46,9 @@ type Settings struct {
 	WatchServices []string         `json:"watchServices"`
 	SessionIPBind bool             `json:"sessionIpBind"`
 	UpdateCheck   bool             `json:"updateCheck"`
+	FileRoots     []files.Root     `json:"fileRoots"`   // dosya gezgininde erişim izni verilmiş klasörler
+	FilePerms     int              `json:"filePerms"`   // izin biçimi sürümü (1 = yazma/silme ayrı)
+	TerminalOff   bool             `json:"terminalOff"` // web terminali kapalı
 }
 
 type Store struct {
@@ -54,6 +59,11 @@ type Store struct {
 
 // Open settings.json'u okur; yoksa config.env değerleriyle oluşturur.
 func Open(dir string, cfg *config.Config) (*Store, error) {
+	if os.Geteuid() != 0 {
+		if abs, err := filepath.Abs(filepath.Join(dir, "depo")); err == nil {
+			DefaultStorage = abs
+		}
+	}
 	st := &Store{path: filepath.Join(dir, "settings.json")}
 	b, err := os.ReadFile(st.path)
 	switch {
@@ -73,6 +83,16 @@ func Open(dir string, cfg *config.Config) (*Store, error) {
 		return nil, err
 	}
 	st.normalize()
+	// root olmadan çalışırken eski varsayılan (/srv) erişilemezse yerel depoya geç
+	if DefaultStorage != serverStorage {
+		for i, r := range st.s.FileRoots {
+			if r.Path == serverStorage {
+				if _, e := os.ReadDir(r.Path); e != nil { // yok ya da erişilemiyor
+					st.s.FileRoots[i].Path = DefaultStorage
+				}
+			}
+		}
+	}
 	if os.IsNotExist(err) {
 		if err := st.save(); err != nil {
 			return nil, err
@@ -114,7 +134,28 @@ func (st *Store) normalize() {
 	if s.WatchServices == nil {
 		s.WatchServices = []string{}
 	}
+	if s.FileRoots == nil { // ilk kurulum: sunucuyu depolama alanı olarak kullanmak için bir klasör
+		s.FileRoots = []files.Root{{Name: "Depo", Path: DefaultStorage, Write: true, Delete: true}}
+		s.FilePerms = 1
+	}
+	if s.FilePerms < 1 { // eski "salt okunur" biçiminden geçiş
+		for i := range s.FileRoots {
+			r := &s.FileRoots[i]
+			r.Write, r.Delete = !r.ReadOnly, !r.ReadOnly
+		}
+		s.FilePerms = 1
+	}
+	for i := range s.FileRoots {
+		s.FileRoots[i].ReadOnly = false
+	}
 }
+
+// DefaultStorage varsayılan depolama klasörü; ilk açılışta yoksa oluşturulur.
+// Panel root değilse (örn. geliştirme modunda kendi bilgisayarında) /srv'ye yazamayacağı
+// için veri klasörünün içinde bir "depo" klasörü kullanılır.
+var DefaultStorage = "/srv/kokpit-depo"
+
+const serverStorage = "/srv/kokpit-depo"
 
 func (st *Store) save() error {
 	b, err := json.MarshalIndent(st.s, "", "  ")
@@ -138,6 +179,7 @@ func (st *Store) Get() Settings {
 		c.Events[k] = v
 	}
 	c.WatchServices = append([]string(nil), st.s.WatchServices...)
+	c.FileRoots = append([]files.Root{}, st.s.FileRoots...)
 	return c
 }
 
@@ -170,4 +212,16 @@ func MaskToken(t string) string {
 		return "••••"
 	}
 	return t[:4] + "••••••••" + t[len(t)-4:]
+}
+
+// Root adıyla dosya kökünü bulur.
+func (st *Store) Root(name string) (files.Root, bool) {
+	st.mu.RLock()
+	defer st.mu.RUnlock()
+	for _, r := range st.s.FileRoots {
+		if r.Name == name {
+			return r, true
+		}
+	}
+	return files.Root{}, false
 }

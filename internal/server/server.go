@@ -17,13 +17,17 @@ import (
 
 	"github.com/OsmanxCan/kokpit/internal/alerts"
 	"github.com/OsmanxCan/kokpit/internal/config"
+	"github.com/OsmanxCan/kokpit/internal/deploy"
+	"github.com/OsmanxCan/kokpit/internal/geoip"
 	"github.com/OsmanxCan/kokpit/internal/nginx"
 	"github.com/OsmanxCan/kokpit/internal/security"
 	"github.com/OsmanxCan/kokpit/internal/services"
 	"github.com/OsmanxCan/kokpit/internal/settings"
 	"github.com/OsmanxCan/kokpit/internal/store"
 	"github.com/OsmanxCan/kokpit/internal/system"
+	"github.com/OsmanxCan/kokpit/internal/telegram"
 	"github.com/OsmanxCan/kokpit/internal/update"
+	"github.com/OsmanxCan/kokpit/internal/uptime"
 )
 
 type Server struct {
@@ -36,11 +40,15 @@ type Server struct {
 	alerts *alerts.Engine
 	upd    *update.Checker
 	webFS  fs.FS
+	up     *uptime.Engine
+	geo    *geoip.DB
+	dep    *deploy.Engine
+	bot    *telegram.Bot
 }
 
 func New(cfg *config.Config, st *store.Store, set *settings.Store, sys *system.Collector, svc *services.Manager,
-	sec *security.Analyzer, al *alerts.Engine, upd *update.Checker, web fs.FS) *Server {
-	return &Server{cfg, st, set, sys, svc, sec, al, upd, web}
+	sec *security.Analyzer, al *alerts.Engine, upd *update.Checker, web fs.FS, up *uptime.Engine, geo *geoip.DB, dep *deploy.Engine, bot *telegram.Bot) *Server {
+	return &Server{cfg, st, set, sys, svc, sec, al, upd, web, up, geo, dep, bot}
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
@@ -97,6 +105,51 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /api/security", a(s.handleSecurity))
 	mux.HandleFunc("POST /api/security/ban", a(s.handleBan))
+
+	mux.HandleFunc("GET /api/uptime", a(s.handleUptimeList))
+	mux.HandleFunc("GET /api/uptime/suggest", a(s.handleUptimeSuggest))
+	mux.HandleFunc("POST /api/uptime", a(s.handleUptimeAdd))
+	mux.HandleFunc("GET /api/uptime/{id}", a(s.handleUptimeDetail))
+	mux.HandleFunc("PUT /api/uptime/{id}", a(s.handleUptimeUpdate))
+	mux.HandleFunc("DELETE /api/uptime/{id}", a(s.handleUptimeDelete))
+	mux.HandleFunc("POST /api/uptime/{id}/check", a(s.handleUptimeCheck))
+
+	mux.HandleFunc("GET /api/security/attacks", a(s.handleAttacks))
+
+	mux.HandleFunc("GET /api/firewall", a(s.handleFirewall))
+	mux.HandleFunc("POST /api/firewall/rules", a(s.handleFirewallAdd))
+	mux.HandleFunc("DELETE /api/firewall/rules/{num}", a(s.handleFirewallDelete))
+	mux.HandleFunc("POST /api/firewall/state", a(s.handleFirewallState))
+
+	mux.HandleFunc("GET /api/files/roots", a(s.handleFileRoots))
+	mux.HandleFunc("GET /api/files/browse", a(s.handleFileBrowse))
+	mux.HandleFunc("POST /api/files/roots", a(s.handleFileGrant))
+	mux.HandleFunc("PUT /api/files/roots/{name}", a(s.handleFileRootUpdate))
+	mux.HandleFunc("DELETE /api/files/roots/{name}", a(s.handleFileRevoke))
+	mux.HandleFunc("GET /api/files/list", a(s.handleFileList))
+	mux.HandleFunc("GET /api/files/read", a(s.handleFileRead))
+	mux.HandleFunc("GET /api/files/download", a(s.handleFileDownload))
+	mux.HandleFunc("GET /api/files/zip", a(s.handleFileZip))
+	mux.HandleFunc("POST /api/files/write", a(s.handleFileWrite))
+	mux.HandleFunc("POST /api/files/mkdir", a(s.handleFileMkdir))
+	mux.HandleFunc("POST /api/files/move", a(s.handleFileMove))
+	mux.HandleFunc("POST /api/files/delete", a(s.handleFileDelete))
+	mux.HandleFunc("POST /api/files/upload", a(s.handleFileUpload))
+	mux.HandleFunc("POST /api/files/upload/cancel", a(s.handleFileUploadCancel))
+
+	mux.HandleFunc("GET /api/terminal", a(s.handleTerminal))
+
+	mux.HandleFunc("GET /api/telegram/status", a(func(w http.ResponseWriter, r *http.Request) { writeJSON(w, s.bot.Status()) }))
+
+	mux.HandleFunc("GET /api/deploy", a(s.handleDeployList))
+	mux.HandleFunc("POST /api/deploy", a(s.handleDeploySave))
+	mux.HandleFunc("PUT /api/deploy/{id}", a(s.handleDeploySave))
+	mux.HandleFunc("DELETE /api/deploy/{id}", a(s.handleDeployDelete))
+	mux.HandleFunc("POST /api/deploy/{id}/run", a(s.handleDeployRun))
+	mux.HandleFunc("GET /api/deploy/{id}/runs", a(s.handleDeployRuns))
+	mux.HandleFunc("GET /api/deploy/{id}/commits", a(s.handleDeployCommits))
+	mux.HandleFunc("GET /api/deploy/runs/{rid}/log", a(s.handleDeployLog))
+	mux.HandleFunc("POST /api/deploy/runs/{rid}/cancel", a(s.handleDeployCancel))
 
 	mux.HandleFunc("GET /api/alerts", a(s.handleAlerts))
 	mux.HandleFunc("POST /api/alerts/test", a(s.handleAlertTest))
@@ -196,7 +249,9 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	}
 	al := s.st.Alerts(8)
 	sites, _ := nginx.Sites()
+	ut, uu, ud := s.up.Counts()
 	writeJSON(w, map[string]any{
+		"uptime": map[string]int{"total": ut, "up": uu, "down": ud},
 		"system": snap, "counts": counts, "problems": problems,
 		"security": map[string]any{"score": rep.Score, "failed": failed, "sshFail24h": rep.SSHFail24h, "banned": len(rep.Banned), "ufw": rep.UFW},
 		"alerts":   al, "sites": sites,

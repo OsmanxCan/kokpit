@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Cpu, Boxes, Globe, ShieldCheck, Bell, ScrollText, LogOut, PanelLeft, X,
-  Settings, ArrowUpCircle, Sun, Moon, Monitor, EllipsisVertical, UserRound, Github,
+  Settings, ArrowUpCircle, Activity, BrickWall, Radar, FolderOpen, SquareTerminal, Rocket, Sun, Moon, Monitor, EllipsisVertical, UserRound, Github,
 } from 'lucide-react'
 import { api, type Me } from '../lib/api'
 import { getTheme, setTheme, type Theme } from '../lib/theme'
@@ -13,20 +13,26 @@ const groups = [
   { label: 'İzleme', items: [
     { to: '/', label: 'Genel bakış', icon: LayoutDashboard, end: true },
     { to: '/sistem', label: 'Sistem', icon: Cpu },
+    { to: '/uptime', label: 'Uptime', icon: Activity },
   ] },
   { label: 'Yönetim', items: [
     { to: '/projeler', label: 'Projeler', icon: Boxes },
     { to: '/siteler', label: 'Siteler', icon: Globe },
+    { to: '/deploy', label: 'Deploy', icon: Rocket },
+    { to: '/dosyalar', label: 'Dosyalar', icon: FolderOpen },
+    { to: '/terminal', label: 'Terminal', icon: SquareTerminal },
   ] },
   { label: 'Güvenlik', items: [
     { to: '/guvenlik', label: 'Güvenlik', icon: ShieldCheck },
+    { to: '/firewall', label: 'Firewall', icon: BrickWall },
+    { to: '/saldirilar', label: 'Saldırı haritası', icon: Radar },
     { to: '/bildirimler', label: 'Bildirimler', icon: Bell },
     { to: '/kayitlar', label: 'İşlem kayıtları', icon: ScrollText },
   ] },
 ]
 
 const titles: Record<string, string> = {
-  '/': 'Genel bakış', '/sistem': 'Sistem', '/projeler': 'Projeler', '/siteler': 'Siteler', '/guvenlik': 'Güvenlik',
+  '/': 'Genel bakış', '/sistem': 'Sistem', '/uptime': 'Uptime', '/dosyalar': 'Dosyalar', '/deploy': 'Deploy', '/terminal': 'Terminal', '/firewall': 'Firewall', '/saldirilar': 'Saldırı haritası', '/projeler': 'Projeler', '/siteler': 'Siteler', '/guvenlik': 'Güvenlik',
   '/bildirimler': 'Bildirimler', '/kayitlar': 'İşlem kayıtları', '/ayarlar': 'Ayarlar', '/guncellemeler': 'Güncellemeler',
 }
 
