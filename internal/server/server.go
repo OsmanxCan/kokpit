@@ -152,6 +152,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/sitewizard/preview", a(s.handleWizardPreview))
 	mux.HandleFunc("POST /api/sitewizard", a(s.handleWizardCreate))
 	mux.HandleFunc("DELETE /api/sitewizard/{host}", a(s.handleWizardRemove))
+	mux.HandleFunc("GET /api/sitewizard/jobs/{id}", a(s.handleWizardJob))
 
 	mux.HandleFunc("GET /api/logrules", a(s.handleLogRules))
 	mux.HandleFunc("POST /api/logrules", a(s.handleLogRuleSave))

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 	"os"
 	"strings"
@@ -50,26 +49,35 @@ func (s *Server) handleWizardCreate(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	steps, err := s.Wizard.Create(req)
-	si := sess(r)
-	s.st.Audit(si.Username, clientIP(r), "yeni site", req.Host, err == nil, strings.TrimSpace(errStr(err)+" "+stepsText(steps)))
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(400)
-		json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "steps": steps})
-		return
-	}
-	writeJSON(w, map[string]any{"ok": true, "steps": steps})
-}
-
-func (s *Server) handleWizardRemove(w http.ResponseWriter, r *http.Request) {
-	host := r.PathValue("host")
-	steps, err := s.Wizard.Remove(host)
-	si := sess(r)
-	s.st.Audit(si.Username, clientIP(r), "siteyi kaldır", host, err == nil, strings.TrimSpace(errStr(err)+" "+stepsText(steps)))
+	user, ip := sess(r).Username, clientIP(r)
+	id, err := s.Wizard.StartCreate(req, func(j *sitewizard.Job) {
+		s.st.Audit(user, ip, "yeni site", j.Host, j.Error == "", strings.TrimSpace(j.Error+" "+stepsText(j.Steps)))
+	})
 	if err != nil {
 		writeErr(w, 400, err.Error())
 		return
 	}
-	writeJSON(w, map[string]any{"ok": true, "steps": steps})
+	writeJSON(w, map[string]any{"job": id})
+}
+
+func (s *Server) handleWizardRemove(w http.ResponseWriter, r *http.Request) {
+	host := r.PathValue("host")
+	user, ip := sess(r).Username, clientIP(r)
+	id, err := s.Wizard.StartRemove(host, func(j *sitewizard.Job) {
+		s.st.Audit(user, ip, "siteyi kaldır", j.Host, j.Error == "", strings.TrimSpace(j.Error+" "+stepsText(j.Steps)))
+	})
+	if err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"job": id})
+}
+
+func (s *Server) handleWizardJob(w http.ResponseWriter, r *http.Request) {
+	j, ok := sitewizard.GetJob(r.PathValue("id"))
+	if !ok {
+		writeErr(w, 404, "iş bulunamadı (panel yeniden başlatılmış olabilir); Siteler listesini yenile")
+		return
+	}
+	writeJSON(w, j)
 }

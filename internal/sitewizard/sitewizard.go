@@ -4,6 +4,8 @@
 package sitewizard
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -480,4 +482,93 @@ func (w *Wizard) Remove(host string) ([]Step, error) {
 	}
 	w.save(append(l[:idx], l[idx+1:]...))
 	return steps, nil
+}
+
+// ---------- arka plan işleri ----------
+// Tünel yeniden başlatılırken panelin kendi bağlantısı da (panel aynı tünelin arkasındaysa)
+// birkaç saniye kopar. Bu yüzden oluşturma/kaldırma arka planda çalışır; arayüz sonucu sorar.
+
+type Job struct {
+	ID     string `json:"id"`
+	Op     string `json:"op"` // create | remove
+	Host   string `json:"host"`
+	Done   bool   `json:"done"`
+	Error  string `json:"error,omitempty"`
+	Steps  []Step `json:"steps"`
+	Start  int64  `json:"start"`
+	finish int64
+}
+
+var (
+	jobsMu sync.Mutex
+	jobs   = map[string]*Job{}
+)
+
+func newJobID() string {
+	b := make([]byte, 8)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func (w *Wizard) startJob(op, host string, fn func() ([]Step, error), onDone func(*Job)) string {
+	j := &Job{ID: newJobID(), Op: op, Host: host, Steps: []Step{}, Start: time.Now().Unix()}
+	jobsMu.Lock()
+	for id, o := range jobs { // bir saatten eski bitmiş işleri temizle
+		if o.Done && time.Since(time.Unix(o.finish, 0)) > time.Hour {
+			delete(jobs, id)
+		}
+	}
+	jobs[j.ID] = j
+	jobsMu.Unlock()
+	go func() {
+		steps, err := fn()
+		jobsMu.Lock()
+		j.Steps = steps
+		if j.Steps == nil {
+			j.Steps = []Step{}
+		}
+		if err != nil {
+			j.Error = err.Error()
+		}
+		j.Done, j.finish = true, time.Now().Unix()
+		cp := *j
+		jobsMu.Unlock()
+		if onDone != nil {
+			onDone(&cp)
+		}
+	}()
+	return j.ID
+}
+
+// StartCreate isteği doğrular ve siteyi arka planda oluşturur.
+func (w *Wizard) StartCreate(r Request, onDone func(*Job)) (string, error) {
+	if err := w.validate(&r); err != nil {
+		return "", err
+	}
+	return w.startJob("create", r.Host, func() ([]Step, error) { return w.Create(r) }, onDone), nil
+}
+
+// StartRemove siteyi arka planda kaldırır.
+func (w *Wizard) StartRemove(host string, onDone func(*Job)) (string, error) {
+	found := false
+	for _, s := range w.Sites() {
+		if s.Host == host {
+			found = true
+		}
+	}
+	if !found {
+		return "", errors.New("bu site sihirbazla oluşturulmamış; sadece sihirbazın oluşturduğu siteler buradan kaldırılabilir")
+	}
+	return w.startJob("remove", host, func() ([]Step, error) { return w.Remove(host) }, onDone), nil
+}
+
+// GetJob işin anlık durumunu döner.
+func GetJob(id string) (Job, bool) {
+	jobsMu.Lock()
+	defer jobsMu.Unlock()
+	j, ok := jobs[id]
+	if !ok {
+		return Job{}, false
+	}
+	return *j, true
 }

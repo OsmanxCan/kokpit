@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { RefreshCw, Activity, Plus, Wand2 } from 'lucide-react'
-import { SiteWizard, StepList, type Step, type WizardInfo } from '../components/SiteWizard'
+import { SiteWizard, StepList, WorkingBox, waitJob, type Step, type WizardInfo } from '../components/SiteWizard'
 import { api, type Site } from '../lib/api'
 import { usePoll } from '../lib/hooks'
 import { daysLeft, dateTime } from '../lib/format'
@@ -20,14 +20,19 @@ export function Sites() {
   const [out, setOut] = useState<{ ok: boolean; text: string } | null>(null)
   const wiz = usePoll<WizardInfo>('/api/sitewizard', 60000)
   const [wizOpen, setWizOpen] = useState(false)
-  const [removed, setRemoved] = useState<{ host: string; steps: Step[] } | null>(null)
+  const [removed, setRemoved] = useState<{ host: string; steps: Step[]; working?: boolean; offline?: boolean; error?: string } | null>(null)
 
   async function removeSite(host: string) {
     try {
-      const r = await api.del<{ steps: Step[] }>(`/api/sitewizard/${encodeURIComponent(host)}`)
-      setRemoved({ host, steps: r.steps })
+      const { job } = await api.del<{ job: string }>(`/api/sitewizard/${encodeURIComponent(host)}`)
+      setRemoved({ host, steps: [], working: true })
+      const j = await waitJob(job, (offline) => setRemoved((r) => r && { ...r, offline }))
+      setRemoved({ host, steps: j.steps, error: j.error })
       reload(); wiz.reload()
-    } catch (e) { toast.err((e as Error).message) }
+    } catch (e) {
+      setRemoved(null)
+      toast.err((e as Error).message)
+    }
   }
 
   async function probe(host: string) {
@@ -121,10 +126,11 @@ export function Sites() {
         )}
       </Panel>
       <SiteWizard open={wizOpen} info={wiz.data ?? null} onClose={() => setWizOpen(false)} onDone={() => { reload(); wiz.reload() }} />
-      <Dialog open={!!removed} onClose={() => setRemoved(null)} title={`${removed?.host ?? ''} kaldırıldı`}
-        description="Uygulamanın dosyalarına dokunulmadı; sadece yayın ayarları kaldırıldı."
-        footer={<Button variant="default" onClick={() => setRemoved(null)}>Kapat</Button>}>
-        {removed && <StepList steps={removed.steps} />}
+      <Dialog open={!!removed} onClose={() => !removed?.working && setRemoved(null)}
+        title={removed?.working ? `${removed.host} kaldırılıyor` : removed?.error ? `${removed?.host} kaldırılırken sorun çıktı` : `${removed?.host ?? ''} kaldırıldı`}
+        description={removed?.working ? 'Bu pencereyi kapatma.' : removed?.error || 'Uygulamanın dosyalarına dokunulmadı; sadece yayın ayarları kaldırıldı.'}
+        footer={<Button variant="default" disabled={removed?.working} onClick={() => setRemoved(null)}>Kapat</Button>}>
+        {removed && (removed.working ? <WorkingBox offline={!!removed.offline} tunnel /> : <StepList steps={removed.steps} />)}
       </Dialog>
     </div>
   )

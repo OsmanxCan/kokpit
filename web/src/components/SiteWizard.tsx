@@ -1,8 +1,8 @@
 // Yeni site sihirbazı: alan adı → Nginx + tünel + DNS + uptime, tek seferde.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CheckCircle2, XCircle, CircleMinus, Info, Undo2, TriangleAlert, ExternalLink, Rocket } from 'lucide-react'
-import { api } from '../lib/api'
+import { CheckCircle2, XCircle, CircleMinus, Info, Undo2, TriangleAlert, ExternalLink, Rocket, ChevronDown, Check, X } from 'lucide-react'
+import { api, ApiError } from '../lib/api'
 import { Button, Dialog, ErrorBox, Field, Input, Loading, Switch, Tabs, cn } from './ui'
 
 export type WizardInfo = {
@@ -13,6 +13,26 @@ export type WizardInfo = {
 type Req = { host: string; kind: 'proxy' | 'static'; port: number; root: string; spa: boolean; bodyMb: number; tunnel: boolean; dns: boolean; uptime: boolean }
 type Preview = { host: string; nginx: string; nginxAt: string; tunnel: string; tunnelId: string; dns: string; dnsMode: string; warnings: string[] }
 export type Step = { name: string; status: 'ok' | 'skipped' | 'failed' | 'rolledback' | 'info'; detail: string }
+
+export type Job = { id: string; op: string; host: string; done: boolean; error?: string; steps: Step[] }
+
+// waitJob arka plan işinin bitmesini bekler. Panel Cloudflare Tünel arkasındaysa tünel yeniden
+// başlarken istekler birkaç saniye başarısız olur; bu süre boyunca sormaya devam eder.
+export async function waitJob(id: string, onWaiting: (offline: boolean) => void): Promise<Job> {
+  const until = Date.now() + 3 * 60_000
+  while (Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 1500))
+    try {
+      const j = await api.get<Job>(`/api/sitewizard/jobs/${id}`)
+      onWaiting(false)
+      if (j.done) return j
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 404 || e.status === 401)) throw e
+      onWaiting(true) // bağlantı kopuk: tünel yeniden başlıyor olabilir
+    }
+  }
+  throw new Error('İşlem 3 dakikada bitmedi. Siteler listesini ve İşlem kayıtlarını kontrol et.')
+}
 
 export function StepList({ steps }: { steps: Step[] }) {
   const icon = { ok: CheckCircle2, failed: XCircle, skipped: CircleMinus, info: Info, rolledback: Undo2 }
@@ -32,16 +52,89 @@ export function StepList({ steps }: { steps: Step[] }) {
   )
 }
 
+// Hangi projeler hangi türle yayınlanır: [ad, nasıl]
+const SUPPORT: Record<'proxy' | 'static', { title: string; items: [string, string][] }> = {
+  proxy: {
+    title: 'Sunucuda bir portu dinleyen her uygulama',
+    items: [
+      ['Next.js, Nuxt, SvelteKit, Remix, Astro (SSR)', 'next start, node .output/server/index.mjs gibi; PM2 ile çalıştır'],
+      ['NestJS, Express, Fastify, Hono', 'node dist/main.js; PM2 ile çalıştır'],
+      ['Laravel', 'Octane (php artisan octane:start) ile; php artisan serve sadece deneme içindir'],
+      ['Django, FastAPI, Flask', 'gunicorn veya uvicorn ile 127.0.0.1:<port>'],
+      ['Go, Rust, .NET, Spring Boot, Bun, Deno', 'derlenmiş programı systemd veya PM2 ile çalıştır'],
+      ['Docker konteynerleri', 'portu 127.0.0.1:<port>:<port> olarak yayınla (yoksa firewall atlanır)'],
+      ['Hazır uygulamalar', 'Strapi, Ghost, n8n, Grafana, Uptime Kuma, Gitea…'],
+    ],
+  },
+  static: {
+    title: 'Derleme çıktısı HTML/CSS/JS olan siteler',
+    items: [
+      ['React, Vue, Svelte, Solid (Vite)', 'klasör: dist; tek sayfa uygulaması seçeneğini aç'],
+      ['Angular', 'klasör: dist/<proje>/browser; tek sayfa uygulaması seçeneğini aç'],
+      ['Next.js (output: export)', 'klasör: out'],
+      ['Astro, Nuxt generate, SvelteKit adapter-static', 'klasör: dist, .output/public veya build'],
+      ['Hugo, Jekyll, Gatsby, Eleventy, VitePress', 'klasör: public, _site, _site, .vitepress/dist'],
+      ['Düz HTML siteleri', 'index.html\'in bulunduğu klasör'],
+    ],
+  },
+}
+const UNSUPPORTED: [string, string][] = [
+  ['PHP-FPM ile çalışan siteler', 'WordPress, klasik Laravel/PHP kurulumları (şimdilik elle Nginx ayarı gerekir)'],
+  ['Tünelsiz HTTPS', 'tünel kullanmıyorsan sertifikayı certbot ile ayrıca almalısın'],
+]
+
+function SupportInfo({ kind }: { kind: 'proxy' | 'static' }) {
+  const d = SUPPORT[kind]
+  return (
+    <details className="group rounded-lg border">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden">
+        <span className="flex items-center gap-2"><Info size={15} className="text-muted-foreground" /> Hangi projeler destekleniyor?</span>
+        <ChevronDown size={16} className="text-muted-foreground transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="space-y-3 border-t px-4 py-3 text-sm">
+        <div className="text-muted-foreground">{d.title}:</div>
+        <ul className="space-y-1.5">
+          {d.items.map(([a, b]) => (
+            <li key={a} className="flex gap-2"><Check size={15} className="mt-0.5 shrink-0 text-success" /><span><span className="font-medium">{a}</span> <span className="text-muted-foreground">· {b}</span></span></li>
+          ))}
+        </ul>
+        <div className="text-muted-foreground">Desteklenmeyenler:</div>
+        <ul className="space-y-1.5">
+          {UNSUPPORTED.map(([a, b]) => (
+            <li key={a} className="flex gap-2"><X size={15} className="mt-0.5 shrink-0 text-destructive" /><span><span className="font-medium">{a}</span> <span className="text-muted-foreground">· {b}</span></span></li>
+          ))}
+        </ul>
+      </div>
+    </details>
+  )
+}
+
+export function WorkingBox({ offline, tunnel }: { offline: boolean; tunnel: boolean }) {
+  return (
+    <div className="flex flex-col items-center gap-3 py-8 text-center">
+      <Loading />
+      <div className="max-w-md text-sm text-muted-foreground">
+        {offline
+          ? 'Panel bağlantısı geçici olarak koptu. Tünel yeniden başlıyor olabilir; bağlantı gelince sonuç burada görünecek.'
+          : tunnel ? 'Nginx ayarlanıyor, tünel yeniden başlatılıyor. Panel tünelin arkasındaysa bağlantı birkaç saniye kopabilir; bu normal.' : 'Nginx ayarlanıyor…'}
+      </div>
+    </div>
+  )
+}
+
 export function SiteWizard({ open, info, onClose, onDone }: { open: boolean; info: WizardInfo | null; onClose: () => void; onDone: () => void }) {
   const nav = useNavigate()
   const blank: Req = { host: '', kind: 'proxy', port: 3000, root: '/var/www/', spa: true, bodyMb: 50, tunnel: true, dns: true, uptime: true }
   const [f, setF] = useState<Req>(blank)
-  const [stage, setStage] = useState<'form' | 'preview' | 'result'>('form')
+  const [stage, setStageRaw] = useState<'form' | 'preview' | 'working' | 'result'>('form')
+  const stageRef = useRef(stage)
+  const setStage = (v: typeof stage) => { stageRef.current = v; setStageRaw(v) }
   const [preview, setPreview] = useState<Preview | null>(null)
   const [steps, setSteps] = useState<Step[]>([])
   const [failed, setFailed] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+  const [offline, setOffline] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -59,14 +152,17 @@ export function SiteWizard({ open, info, onClose, onDone }: { open: boolean; inf
   async function create() {
     setBusy(true); setErr('')
     try {
-      const r = await fetch('/api/sitewizard', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Panel': '1' }, body: JSON.stringify(f) })
-      const d = await r.json()
-      if (!r.ok && !d.steps) throw new Error(d.error || `HTTP ${r.status}`)
-      setSteps(d.steps ?? [])
-      setFailed(r.ok ? '' : d.error)
+      const { job } = await api.post<{ job: string }>('/api/sitewizard', f)
+      setStage('working')
+      const j = await waitJob(job, setOffline)
+      setSteps(j.steps)
+      setFailed(j.error ?? '')
       setStage('result')
       onDone()
-    } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+    } catch (e) {
+      setErr((e as Error).message)
+      if (stageRef.current === 'working') setStage('preview')
+    } finally { setBusy(false); setOffline(false) }
   }
 
   const host = preview?.host ?? f.host
@@ -76,6 +172,8 @@ export function SiteWizard({ open, info, onClose, onDone }: { open: boolean; inf
   </> : stage === 'preview' ? <>
     <Button onClick={() => setStage('form')}>Geri</Button>
     <Button variant="default" onClick={create} loading={busy}>Siteyi oluştur</Button>
+  </> : stage === 'working' ? <>
+    <Button disabled>Kapat</Button>
   </> : <>
     {!failed && <Button className="mr-auto" onClick={() => { onClose(); nav(`/deploy?yeni=1&ad=${encodeURIComponent(host)}${f.kind === 'static' ? `&klasor=${encodeURIComponent(f.root)}` : ''}`) }}><Rocket size={14} /> Deploy projesi ekle</Button>}
     {!failed && <a href={`https://${host}`} target="_blank" rel="noopener noreferrer"><Button><ExternalLink size={14} /> Siteyi aç</Button></a>}
@@ -83,16 +181,17 @@ export function SiteWizard({ open, info, onClose, onDone }: { open: boolean; inf
   </>
 
   return (
-    <Dialog open={open} onClose={onClose} wide footer={footer}
-      title={stage === 'form' ? 'Yeni site' : stage === 'preview' ? 'Yapılacaklar' : failed ? 'Site oluşturulamadı' : 'Site hazır'}
+    <Dialog open={open} onClose={stage === 'working' ? () => {} : onClose} wide footer={footer}
+      title={stage === 'form' ? 'Yeni site' : stage === 'preview' ? 'Yapılacaklar' : stage === 'working' ? 'Site oluşturuluyor' : failed ? 'Site oluşturulamadı' : 'Site hazır'}
       description={stage === 'form' ? 'Alan adını ve sitenin nereden sunulacağını seç. Sonraki adımda yapılacak her değişikliği görüp onaylayacaksın.'
-        : stage === 'preview' ? 'Bir adım başarısız olursa o ana kadar yapılanlar geri alınır.' : failed ? failed : 'DNS kaydının yayılması birkaç dakika sürebilir.'}>
+        : stage === 'preview' ? 'Bir adım başarısız olursa o ana kadar yapılanlar geri alınır.' : stage === 'working' ? 'Bu pencereyi kapatma.' : failed ? failed : 'DNS kaydının yayılması birkaç dakika sürebilir.'}>
       {!info ? <Loading /> : stage === 'form' ? (
         <div className="space-y-4">
           <Field label="Alan adı"><Input value={f.host} onChange={(e) => set('host', e.target.value)} placeholder="uygulama.example.com" autoFocus /></Field>
           <Tabs value={f.kind} onChange={(v) => set('kind', v)} items={[{ id: 'proxy', label: 'Çalışan uygulama (port)' }, { id: 'static', label: 'Statik dosyalar (klasör)' }]} />
+          <SupportInfo kind={f.kind} />
           {f.kind === 'proxy' ? (
-            <Field label="Uygulamanın portu" hint="Next.js, NestJS, Laravel (php artisan serve) gibi sunucunda çalışan uygulamanın dinlediği port">
+            <Field label="Uygulamanın portu" hint="Sunucunda çalışan uygulamanın dinlediği port (örn. Next.js için 3000)">
               <Input type="number" value={f.port} onChange={(e) => set('port', Number(e.target.value))} className="w-40" />
             </Field>
           ) : (
@@ -149,6 +248,8 @@ export function SiteWizard({ open, info, onClose, onDone }: { open: boolean; inf
           {f.uptime && <div><div className="mb-1.5 text-sm font-medium">4. Uptime</div><div className="text-sm text-muted-foreground">https://{preview.host} izlenecek.</div></div>}
           {err && <ErrorBox>{err}</ErrorBox>}
         </div>
+      ) : stage === 'working' ? (
+        <WorkingBox offline={offline} tunnel={f.tunnel} />
       ) : (
         <StepList steps={steps} />
       )}

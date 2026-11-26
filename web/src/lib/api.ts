@@ -20,11 +20,13 @@ async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json', 'X-Panel': '1' },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
-  const data = await res.json().catch(() => ({}))
+  // Cloudflare veya ara bir sunucu kendi HTML hata sayfasını döndürebilir (ör. tünel yeniden başlarken 502)
+  const data = await res.json().catch(() => null)
   if (!res.ok) {
     if (res.status === 401 && !url.endsWith('/login')) onUnauthorized()
-    throw new ApiError(res.status, data.error || `HTTP ${res.status}`)
+    throw new ApiError(res.status, data?.error || (data ? `HTTP ${res.status}` : `Panele ulaşılamadı (HTTP ${res.status}). Bağlantı birkaç saniyeliğine kopmuş olabilir, sayfayı yenileyip tekrar dene.`))
   }
+  if (data === null) throw new ApiError(res.status, 'Sunucudan beklenmeyen bir yanıt geldi. Sayfayı yenileyip tekrar dene.')
   return data as T
 }
 
