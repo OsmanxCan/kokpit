@@ -6,7 +6,7 @@ import { ago, dateTime, daysLeft, duration } from '../lib/format'
 import { AreaChart } from '../components/charts'
 import {
   Button, Card, CardContent, CardHeader, cn, ConfirmButton, Dialog, Dot, ErrorBox, Field, Input, Loading,
-  Menu, MenuItem, PageHeader, Select, Switch, Tag, toast,
+  Menu, MenuItem, PageHeader, Select, Switch, Tabs, Tag, toast,
 } from '../components/ui'
 
 const fmtPct = (v: number) => v < 0 ? '—' : `%${v >= 99.995 ? '100' : v.toFixed(2).replace('.', ',')}`
@@ -53,7 +53,7 @@ function SslTag({ exp }: { exp: number }) {
 }
 
 type Form = Omit<Monitor, 'id' | 'createdAt'>
-const blank: Form = { name: '', url: '', interval: 60, timeout: 10, expect: 0, keyword: '', enabled: true }
+const blank: Form = { name: '', url: '', interval: 60, timeout: 10, expect: 0, keyword: '', enabled: true, kind: 'http', issuer: '' }
 
 function MonitorForm({ open, initial, onClose, onSaved }: { open: boolean; initial: Monitor | null; onClose: () => void; onSaved: () => void }) {
   const [f, setF] = useState<Form>(blank)
@@ -99,9 +99,17 @@ function MonitorForm({ open, initial, onClose, onSaved }: { open: boolean; initi
             </div>
           </div>
         )}
-        <Field label="Adres">
-          <Input value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} placeholder="https://ornek.com/saglik" autoFocus={!initial} />
-        </Field>
+        <Tabs value={f.kind ?? 'http'} onChange={(v) => setF({ ...f, kind: v })}
+          items={[{ id: 'http', label: 'Web sitesi' }, { id: 'oidc', label: 'Kimlik sağlayıcı (OIDC)' }]} />
+        {f.kind === 'oidc' ? (
+          <Field label="Issuer adresi" hint="Keşif belgesi (/.well-known/openid-configuration) okunur; issuer'ın aynı olduğu ve JWKS'te imza anahtarı bulunduğu kontrol edilir.">
+            <Input value={f.issuer || f.url} onChange={(e) => setF({ ...f, issuer: e.target.value, url: e.target.value })} placeholder="https://auth.example.com" autoFocus={!initial} />
+          </Field>
+        ) : (
+          <Field label="Adres">
+            <Input value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} placeholder="https://example.com/saglik" autoFocus={!initial} />
+          </Field>
+        )}
         <Field label="Ad" hint="Boş bırakırsan alan adı kullanılır">
           <Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} maxLength={60} />
         </Field>
@@ -117,15 +125,18 @@ function MonitorForm({ open, initial, onClose, onSaved }: { open: boolean; initi
             </Select>
           </Field>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        {f.kind !== 'oidc' && <div className="grid grid-cols-2 gap-3">
           <Field label="Beklenen HTTP kodu" hint="Boş: 200–399 arası">
             <Input value={f.expect || ''} onChange={(e) => setF({ ...f, expect: Number(e.target.value.replace(/\D/g, '')) || 0 })} placeholder="200–399" inputMode="numeric" />
           </Field>
           <Field label="Sayfada aranacak metin" hint="İsteğe bağlı">
             <Input value={f.keyword} onChange={(e) => setF({ ...f, keyword: e.target.value })} maxLength={200} />
           </Field>
-        </div>
-        <Switch checked={f.enabled} onChange={(v) => setF({ ...f, enabled: v })} label="İzleme açık" />
+        </div>}
+        <label className="flex items-center justify-between gap-4 text-sm font-medium cursor-pointer">
+          İzleme açık
+          <Switch checked={f.enabled} onChange={(v) => setF({ ...f, enabled: v })} label="İzleme açık" />
+        </label>
         {err && <ErrorBox>{err}</ErrorBox>}
       </div>
     </Dialog>
@@ -278,6 +289,7 @@ export function Uptime() {
                       <div className="flex items-center gap-2 font-medium">
                         <StatusDot s={m.status} />
                         <span className="truncate group-hover:underline underline-offset-4">{m.name}</span>
+                        {m.kind === 'oidc' && <Tag tone="mavi">OIDC</Tag>}
                         <SslTag exp={m.certExp} />
                       </div>
                       <div className="mt-0.5 truncate text-xs text-muted-foreground">

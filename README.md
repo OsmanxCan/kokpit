@@ -23,6 +23,12 @@ Sunucunun durumunu, çalışan projelerini ve güvenliğini tek ekrandan izler; 
   <img src="docs/ekran/saldiri.png" alt="Saldırı haritası" width="820">
 </p>
 <p align="center">
+  <img src="docs/ekran/web-saldirilari.png" alt="Web saldırıları" width="820">
+</p>
+<p align="center">
+  <img src="docs/ekran/siteler.png" alt="Yeni site sihirbazı" width="820">
+</p>
+<p align="center">
   <img src="docs/ekran/deploy.png" alt="Deploy çıktısı" width="820">
 </p>
 <p align="center">
@@ -38,15 +44,17 @@ Sunucunun durumunu, çalışan projelerini ve güvenliğini tek ekrandan izler; 
 |---|---|
 | **Sistem** | CPU, RAM, swap, disk, ağ, load, sıcaklık · canlı ve 7 günlük grafikler · en çok kaynak harcayan süreçler |
 | **Projeler** | PM2 süreçleri, Docker container'ları, systemd servisleri · başlat / durdur / yeniden başlat · canlı log (arama, duraklatma) |
-| **Uptime** | Siteleri dakikada bir kontrol eder · 24 saat / 7 gün / 30 gün erişilebilirlik · yanıt süresi grafiği · kesinti geçmişi · SSL bitiş uyarısı |
+| **Uptime** | Siteleri ve OIDC kimlik sağlayıcılarını dakikada bir kontrol eder · 24 saat / 7 gün / 30 gün erişilebilirlik · yanıt süresi grafiği · kesinti geçmişi · SSL bitiş uyarısı |
 | **Deploy** | Tek tıkla git pull → derleme → PM2 yeniden başlatma → sağlık kontrolü · canlı çıktı · hata olursa otomatik geri alma · istenen sürüme dönüş |
 | **Dosyalar** | İzin verilen klasörlerde dosya gezgini · sürükle bırak yükleme (büyük dosyalar parça parça, kaldığı yerden devam) · düzenleme · önizleme · zip indirme |
 | **Telegram** | Bildirimler ve isteğe bağlı komutlar: `/durum`, `/siteler`, `/deploy` (onay butonlu) · sadece senin sohbetin |
 | **Terminal** | Tarayıcıdan sunucu kabuğu · 15 dk boşta kapanır · her açılış kaydedilir ve Telegram'a bildirilir |
-| **Siteler** | Nginx domainleri ve yönlendikleri port · SSL bitiş tarihleri · yanıt süresi kontrolü · `nginx -t` ve reload |
+| **Siteler** | Nginx domainleri ve yönlendikleri port · SSL bitiş tarihleri · yanıt süresi kontrolü · `nginx -t` ve reload · **yeni site sihirbazı** (Nginx + Cloudflare Tünel + DNS + uptime tek seferde, hata olursa geri alınır) |
 | **Güvenlik** | 0–100 güvenlik skoru ve çözüm önerileri · SSH saldırıları ve başarılı girişler · açık portlar · fail2ban ile IP engelleme · bekleyen güncellemeler |
-| **Firewall** | UFW kurallarını ekleme / silme · açarken otomatik geri alma (onaylamazsan kendiliğinden kapanır) · SSH'ı kilitlemeye karşı koruma |
-| **Saldırı haritası** | SSH saldırılarının ülkelere göre dünya haritası · en çok deneyen IP'ler · ülke verisi sunucuda yerel (DB-IP Lite) |
+| **Firewall** | Dinleyen portlar ve dışarıya açık olanlar · UFW kurallarını ekleme / silme · açarken otomatik geri alma (onaylamazsan kendiliğinden kapanır) · SSH'ı kilitlemeye karşı koruma |
+| **Saldırılar** | SSH saldırılarının ülkelere göre dünya haritası · en çok deneyen IP'ler · ülke verisi sunucuda yerel (DB-IP Lite) · port taraması tespiti (internet geneli / hedefli ayrımı, isteğe bağlı otomatik engelleme) · web saldırıları (SQL injection, hassas dosya arama, saldırı araçları) ve dışarı sızan dosya tespiti |
+| **Log kuralları** | Uygulama loglarındaki şüpheli satırlara göre IP engelleme (fail2ban benzeri, panelden) · kaydetmeden önce mevcut loglarda deneme |
+| **Cloudflare** (isteğe bağlı) | IP engelleme · Under Attack modu (panelden veya Telegram'dan) · Cloudflare güvenlik olayları · yeni siteler için DNS kaydı |
 | **Bildirimler** | Telegram: servis çöktü, disk doluyor, CPU/RAM yüksek, **yeni IP'den SSH girişi**, panele hatalı giriş, yeni sürüm · her olay için düzenlenebilir mesaj şablonu ve canlı önizleme |
 | **Ayarlar** | Her şey panelden: Telegram, eşikler, izlenen servisler, şifre ve 2FA, kullanıcılar · açık/koyu tema |
 | **Kayıtlar** | Panelde yapılan her işlem (kim, ne zaman, hangi IP) · açık oturumlar |

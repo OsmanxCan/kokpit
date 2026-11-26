@@ -242,3 +242,39 @@ func Disable() (string, error) {
 	}
 	return out, nil
 }
+
+// ---------- süreli engelleme (port taraması vb.) ----------
+
+// Ban IP'den gelen her şeyi en üstteki kuralla engeller. Var olan izin kurallarından
+// önce uygulanması için "prepend" kullanılır.
+func Ban(ip, comment string) error {
+	if net.ParseIP(ip) == nil {
+		return errors.New("geçersiz IP")
+	}
+	if len(comment) > 60 {
+		comment = comment[:60]
+	}
+	out, err := execx.Run("ufw", "prepend", "deny", "from", ip, "to", "any", "comment", comment)
+	if err != nil {
+		return fmt.Errorf("ufw: %s", strings.TrimSpace(out))
+	}
+	return nil
+}
+
+// Unban Ban ile eklenen kuralı kaldırır.
+func Unban(ip string) error {
+	if net.ParseIP(ip) == nil {
+		return errors.New("geçersiz IP")
+	}
+	out, err := execx.Run("ufw", "--force", "delete", "deny", "from", ip, "to", "any")
+	if err != nil && !strings.Contains(out, "Could not delete non-existent rule") {
+		return fmt.Errorf("ufw: %s", strings.TrimSpace(out))
+	}
+	return nil
+}
+
+// Active UFW açık mı.
+func Active() bool {
+	out, _ := execx.Run("ufw", "status")
+	return strings.Contains(out, "Status: active")
+}

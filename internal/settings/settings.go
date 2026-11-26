@@ -49,6 +49,35 @@ type Settings struct {
 	FileRoots     []files.Root     `json:"fileRoots"`   // dosya gezgininde erişim izni verilmiş klasörler
 	FilePerms     int              `json:"filePerms"`   // izin biçimi sürümü (1 = yazma/silme ayrı)
 	TerminalOff   bool             `json:"terminalOff"` // web terminali kapalı
+	PortScan      PortScan         `json:"portScan"`
+	CFToken       string           `json:"cfToken"` // Cloudflare API token (isteğe bağlı)
+	LogRules      []LogRule        `json:"logRules"`
+}
+
+// LogRule uygulama logundan IP engelleme kuralı.
+type LogRule struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Source    string `json:"source"`    // file | journal
+	Path      string `json:"path"`      // dosya yolu veya systemd servis adı
+	Pattern   string `json:"pattern"`   // <IP> içeren kalıp
+	Regex     bool   `json:"regex"`     // kalıp düzenli ifade mi
+	Threshold int    `json:"threshold"` // pencere içinde eşleşme sayısı
+	Window    int    `json:"window"`    // dakika
+	BanHours  int    `json:"banHours"`  // 0 = kalıcı
+	Action    string `json:"action"`    // auto | cloudflare | firewall
+	Enabled   bool   `json:"enabled"`
+}
+
+// PortScan port tarama tespiti ayarları.
+type PortScan struct {
+	Off         bool     `json:"off"`         // tespit kapalı (varsayılan açık)
+	Threshold   int      `json:"threshold"`   // pencere içinde dokunulan farklı port sayısı
+	Window      int      `json:"window"`      // saniye
+	AutoBan     bool     `json:"autoBan"`     // hedefli taramaları otomatik engelle (varsayılan kapalı)
+	BanInternet bool     `json:"banInternet"` // internet geneli tarayıcıları da engelle
+	BanHours    int      `json:"banHours"`    // 0 = kalıcı
+	Whitelist   []string `json:"whitelist"`   // asla engellenmeyecek IP / ağlar
 }
 
 type Store struct {
@@ -134,6 +163,25 @@ func (st *Store) normalize() {
 	if s.WatchServices == nil {
 		s.WatchServices = []string{}
 	}
+	if s.LogRules == nil {
+		s.LogRules = []LogRule{}
+	}
+	ps := &s.PortScan
+	if ps.Threshold <= 0 {
+		ps.Threshold = 15
+	}
+	if ps.Window <= 0 {
+		ps.Window = 60
+	}
+	if ps.BanHours < 0 {
+		ps.BanHours = 24
+	}
+	if ps.Whitelist == nil {
+		ps.Whitelist = []string{}
+		if ps.BanHours == 0 && !ps.AutoBan { // ilk kurulum
+			ps.BanHours = 24
+		}
+	}
 	if s.FileRoots == nil { // ilk kurulum: sunucuyu depolama alanı olarak kullanmak için bir klasör
 		s.FileRoots = []files.Root{{Name: "Depo", Path: DefaultStorage, Write: true, Delete: true}}
 		s.FilePerms = 1
@@ -180,6 +228,8 @@ func (st *Store) Get() Settings {
 	}
 	c.WatchServices = append([]string(nil), st.s.WatchServices...)
 	c.FileRoots = append([]files.Root{}, st.s.FileRoots...)
+	c.PortScan.Whitelist = append([]string{}, st.s.PortScan.Whitelist...)
+	c.LogRules = append([]LogRule{}, st.s.LogRules...)
 	return c
 }
 

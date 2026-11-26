@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { RefreshCw, Activity } from 'lucide-react'
+import { RefreshCw, Activity, Plus, Wand2 } from 'lucide-react'
+import { SiteWizard, StepList, type Step, type WizardInfo } from '../components/SiteWizard'
 import { api, type Site } from '../lib/api'
 import { usePoll } from '../lib/hooks'
 import { daysLeft, dateTime } from '../lib/format'
-import { Panel, PageHeader, Loading, Button, ConfirmButton, Tag, Empty, ErrorBox, toast } from '../components/ui'
+import { Panel, PageHeader, Loading, Button, ConfirmButton, Tag, Empty, ErrorBox, toast, Dialog } from '../components/ui'
 
 type Probe = { host: string; expiry: number; issuer: string; ms: number; error?: string }
 
@@ -17,6 +18,17 @@ export function Sites() {
   const { data, error, reload, loading } = usePoll<Site[]>('/api/nginx')
   const [probes, setProbes] = useState<Record<string, Probe | 'loading'>>({})
   const [out, setOut] = useState<{ ok: boolean; text: string } | null>(null)
+  const wiz = usePoll<WizardInfo>('/api/sitewizard', 60000)
+  const [wizOpen, setWizOpen] = useState(false)
+  const [removed, setRemoved] = useState<{ host: string; steps: Step[] } | null>(null)
+
+  async function removeSite(host: string) {
+    try {
+      const r = await api.del<{ steps: Step[] }>(`/api/sitewizard/${encodeURIComponent(host)}`)
+      setRemoved({ host, steps: r.steps })
+      reload(); wiz.reload()
+    } catch (e) { toast.err((e as Error).message) }
+  }
 
   async function probe(host: string) {
     setProbes((p) => ({ ...p, [host]: 'loading' }))
@@ -49,8 +61,9 @@ export function Sites() {
         title="Siteler"
         desc="Nginx'teki domainler, yönlendikleri yer ve SSL sertifikaları. Kontrol et butonu siteye internetten bağlanıp yanıt süresini ve dışarıya sunulan sertifikayı ölçer."
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button onClick={reload} loading={loading}><RefreshCw size={14} /></Button>
+            <Button variant="default" onClick={() => setWizOpen(true)}><Plus size={14} /> Yeni site</Button>
             <Button onClick={() => nginx('test')}>Ayarları test et</Button>
             <ConfirmButton onConfirm={() => nginx('reload')} variant="birincil" confirmText="Yeniden yükle?">Nginx'i yeniden yükle</ConfirmButton>
           </div>
@@ -66,12 +79,14 @@ export function Sites() {
               const names = s.names ?? []
               const host = names.find((n) => n.includes('.')) ?? ''
               const p = host ? probes[host] : undefined
+              const byWizard = (wiz.data?.sites ?? []).some((w) => w.host === host)
               return (
                 <li key={s.file + i} className="px-4 py-3.5 border-b border-border/60 last:border-0 flex flex-wrap gap-x-6 gap-y-2 items-start">
                   <div className="min-w-0 flex-1 basis-72">
                     <div className="font-medium flex flex-wrap items-center gap-2">
                       {names.join(', ') || '(adsız)'}
                       {s.ssl ? <Tag tone="yesil">HTTPS</Tag> : <Tag>HTTP</Tag>}
+                      {byWizard && <span title="Yeni site sihirbazı ile oluşturuldu"><Tag tone="mavi"><Wand2 size={11} /> sihirbaz</Tag></span>}
                     </div>
                     <div className="text-sm text-muted-foreground mt-0.5">
                       {(s.proxyPass ?? []).length > 0 ? <>→ <span className="font-mono text-xs text-foreground">{s.proxyPass!.join(', ')}</span></> :
@@ -96,12 +111,21 @@ export function Sites() {
                   {host && (
                     <Button variant="hayalet" onClick={() => probe(host)} loading={p === 'loading'}><Activity size={14} /> Kontrol et</Button>
                   )}
+                  {byWizard && (
+                    <ConfirmButton variant="hayalet" onConfirm={() => removeSite(host)} confirmText="Site kaldırılsın mı?">Kaldır</ConfirmButton>
+                  )}
                 </li>
               )
             })}
           </ul>
         )}
       </Panel>
+      <SiteWizard open={wizOpen} info={wiz.data ?? null} onClose={() => setWizOpen(false)} onDone={() => { reload(); wiz.reload() }} />
+      <Dialog open={!!removed} onClose={() => setRemoved(null)} title={`${removed?.host ?? ''} kaldırıldı`}
+        description="Uygulamanın dosyalarına dokunulmadı; sadece yayın ayarları kaldırıldı."
+        footer={<Button variant="default" onClick={() => setRemoved(null)}>Kapat</Button>}>
+        {removed && <StepList steps={removed.steps} />}
+      </Dialog>
     </div>
   )
 }

@@ -3,9 +3,9 @@ import { useSearchParams } from 'react-router-dom'
 import QRCode from 'qrcode'
 import {
   SlidersHorizontal, Send, BellRing, Server, UserRound, Users, Check, RotateCcw, Copy, Trash2, Plus, KeyRound, ShieldCheck, Search,
-  PenLine, X, Bold, Italic, Code, Braces, Timer, FolderOpen, Lock,
+  PenLine, X, Bold, Italic, Code, Braces, Timer, FolderOpen, Lock, Cloud, ShieldAlert,
 } from 'lucide-react'
-import { api, type EventDef, type FileRoot, type SettingsT, type TelegramStatus, type UserT, type VarDef } from '../lib/api'
+import { api, type CFEvent, type CFResp, type EventDef, type FileRoot, type SettingsT, type TelegramStatus, type UserT, type VarDef } from '../lib/api'
 import { usePoll } from '../lib/hooks'
 import { GrantDialog, RootDialog } from '../components/FolderAccess'
 import { dateTime } from '../lib/format'
@@ -14,13 +14,14 @@ import {
   ErrorBox, Loading, Dialog, Separator, toast, cn,
 } from '../components/ui'
 
-type TabId = 'genel' | 'telegram' | 'bildirimler' | 'servisler' | 'dosyalar' | 'hesap' | 'kullanicilar'
+type TabId = 'genel' | 'telegram' | 'cloudflare' | 'bildirimler' | 'servisler' | 'dosyalar' | 'hesap' | 'kullanicilar'
 
 const tabs: { id: TabId; label: string; icon: typeof Send; desc: string }[] = [
   { id: 'genel', label: 'Genel', icon: SlidersHorizontal, desc: 'Uyarı eşikleri, oturum ve güncelleme' },
   { id: 'telegram', label: 'Telegram', icon: Send, desc: 'Bot bağlantısı' },
   { id: 'bildirimler', label: 'Bildirimler', icon: BellRing, desc: 'Olaylar ve mesaj şablonları' },
   { id: 'servisler', label: 'İzlenen servisler', icon: Server, desc: 'Çökünce haber verilecek servisler' },
+  { id: 'cloudflare', label: 'Cloudflare', icon: Cloud, desc: 'İsteğe bağlı: IP engelleme ve saldırı modu için API token' },
   { id: 'dosyalar', label: 'Dosyalar ve terminal', icon: FolderOpen, desc: 'Dosya gezgininde açılabilen klasörler ve web terminali' },
   { id: 'hesap', label: 'Hesabım', icon: UserRound, desc: 'Şifre ve iki adımlı doğrulama' },
   { id: 'kullanicilar', label: 'Kullanıcılar', icon: Users, desc: 'Panele erişebilen kişiler' },
@@ -83,12 +84,152 @@ export function Settings() {
               {tab === 'bildirimler' && <EventsTab s={data} onSaved={setData} />}
               {tab === 'servisler' && <ServicesTab onSaved={setData} />}
               {tab === 'dosyalar' && <FilesTab s={data} onSaved={setData} />}
+              {tab === 'cloudflare' && <CloudflareTab />}
               {tab === 'hesap' && <AccountTab />}
               {tab === 'kullanicilar' && <UsersTab />}
             </>
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ======================================================================= Cloudflare
+
+const levelLabel: Record<string, string> = {
+  essentially_off: 'Kapalı', low: 'Düşük', medium: 'Orta', high: 'Yüksek', under_attack: 'Under Attack', off: 'Kapalı',
+}
+
+function CloudflareTab() {
+  const { data, reload, error } = usePoll<CFResp>('/api/cloudflare', 60000)
+  const [token, setToken] = useState('')
+  const [busy, setBusy] = useState('')
+  const [events, setEvents] = useState<{ zone: string; list: CFEvent[] | null; err: string } | null>(null)
+
+  async function saveToken() {
+    setBusy('token')
+    try {
+      await api.post('/api/cloudflare/token', { token })
+      toast.ok('Token doğrulandı ve kaydedildi')
+      setToken('')
+      reload()
+    } catch (e) { toast.err((e as Error).message) } finally { setBusy('') }
+  }
+  async function removeToken() {
+    try { await api.del('/api/cloudflare/token'); toast.ok('Token silindi'); reload() } catch (e) { toast.err((e as Error).message) }
+  }
+  async function attack(id: string, on: boolean) {
+    setBusy(id)
+    try { await api.post(`/api/cloudflare/zones/${id}/attack`, { on }); toast.ok(on ? 'Under Attack modu açıldı' : 'Under Attack modu kapatıldı'); reload() } catch (e) { toast.err((e as Error).message) } finally { setBusy('') }
+  }
+  async function showEvents(zone: string, name: string) {
+    setEvents({ zone: name, list: null, err: '' })
+    try { setEvents({ zone: name, list: await api.get<CFEvent[]>(`/api/cloudflare/zones/${zone}/events`), err: '' }) } catch (e) { setEvents({ zone: name, list: [], err: (e as Error).message }) }
+  }
+  async function unban(ip: string) {
+    try { await api.del(`/api/cloudflare/bans/${encodeURIComponent(ip)}`); toast.ok(`${ip} engeli kaldırıldı`); reload() } catch (e) { toast.err((e as Error).message) }
+  }
+
+  if (error && !data) return <ErrorBox>{error}</ErrorBox>
+  if (!data) return <Loading />
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader title="API token" description="İsteğe bağlı. Token girilirse saldırgan IP'ler Cloudflare'de engellenebilir, Under Attack modu panelden veya Telegram'dan açılabilir ve yeni site sihirbazı DNS kaydını kendisi ekler."
+          action={data.enabled ? <Tag tone="yesil"><Check size={12} /> Bağlı</Tag> : <Tag>Kapalı</Tag>} />
+        <CardContent className="space-y-4">
+          <Field label="Token" hint={data.enabled ? <>Kayıtlı: <span className="font-mono">{data.masked}</span>. Değiştirmek için yenisini gir.</> : 'Kaydetmeden önce Cloudflare\'de doğrulanır.'}>
+            <Input type="password" autoComplete="off" spellCheck={false} value={token} onChange={(e) => setToken(e.target.value.trim())} className="font-mono" placeholder="Cloudflare API token" />
+          </Field>
+          {data.error && <ErrorBox>{data.error}</ErrorBox>}
+        </CardContent>
+        <CardFooter className="justify-between">
+          {data.enabled ? <ConfirmButton variant="ghost" size="sm" confirmText="Silinsin mi?" onConfirm={removeToken}><Trash2 size={14} /> Token'ı sil</ConfirmButton> : <span />}
+          <Button variant="default" onClick={saveToken} loading={busy === 'token'} disabled={token.length < 20}>Doğrula ve kaydet</Button>
+        </CardFooter>
+      </Card>
+
+      {data.enabled && (data.zones?.length ?? 0) > 0 && (
+        <Card>
+          <CardHeader title="Alan adları" description="Under Attack modu açıkken ziyaretçiler siteye girmeden önce birkaç saniyelik bir tarayıcı kontrolünden geçer. Yoğun bir saldırı sırasında kullan; kapatınca önceki güvenlik seviyesine dönülür." />
+          <CardContent className="px-0 pb-0">
+            <ul>
+              {data.zones!.map((z) => {
+                const on = z.securityLevel === 'under_attack'
+                return (
+                  <li key={z.id} className="flex flex-wrap items-center gap-3 border-t px-6 py-3 text-sm">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium">{z.name}</div>
+                      <div className="text-xs text-muted-foreground">{z.plan} · güvenlik seviyesi: {levelLabel[z.securityLevel] ?? z.securityLevel ?? '—'}</div>
+                    </div>
+                    <Button size="sm" variant="ghost" onClick={() => showEvents(z.id, z.name)}>Olaylar</Button>
+                    {on
+                      ? <Button size="sm" onClick={() => attack(z.id, false)} loading={busy === z.id}>Under Attack'ı kapat</Button>
+                      : <ConfirmButton size="sm" variant="outline" onConfirm={() => attack(z.id, true)} loading={busy === z.id} confirmText="Açılsın mı?"><ShieldAlert size={14} /> Under Attack</ConfirmButton>}
+                  </li>
+                )
+              })}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
+      {data.bans.length > 0 && (
+        <Card>
+          <CardHeader title="Cloudflare'de engellenen IP'ler" description="Süresi dolanlar kendiliğinden kaldırılır." />
+          <CardContent className="px-0 pb-0">
+            <ul>
+              {data.bans.map((b) => (
+                <li key={b.ip} className="flex flex-wrap items-center gap-3 border-t px-6 py-2.5 text-sm">
+                  <span className="font-mono text-xs">{b.ip}</span>
+                  <span className="min-w-0 flex-1 truncate text-muted-foreground">{b.reason} · {b.by}</span>
+                  <span className="text-xs text-muted-foreground">{b.until ? `${dateTime(b.until)} tarihine kadar` : 'kalıcı'}</span>
+                  <ConfirmButton size="sm" variant="ghost" onConfirm={() => unban(b.ip)} confirmText="Kaldırılsın mı?">Kaldır</ConfirmButton>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader title="Token nasıl oluşturulur?" />
+        <CardContent>
+          <ol className="space-y-3 text-sm">
+            {[
+              <>Cloudflare panelinde <b className="font-medium">My Profile → API Tokens → Create Token → Custom token</b>'a git.</>,
+              <>İzinler: <b className="font-medium">Zone · Zone · Read</b>, <b className="font-medium">Zone · Firewall Services · Edit</b>, <b className="font-medium">Zone · Zone Settings · Edit</b>, <b className="font-medium">Zone · Analytics · Read</b>. Yeni site sihirbazının DNS kaydı ekleyebilmesi için <b className="font-medium">Zone · DNS · Edit</b> de ekle (isteğe bağlı).</>,
+              <><b className="font-medium">Zone Resources</b> kısmında sadece kendi alan adını (veya alan adlarını) seç.</>,
+              <>İstersen <b className="font-medium">Client IP Address Filtering</b> ile token'ı sadece sunucunun IP'sine kilitle.</>,
+              <>Oluşan token'ı yukarıya yapıştırıp <b className="font-medium">Doğrula ve kaydet</b>'e bas. Token tarayıcıya hiçbir zaman geri gönderilmez.</>,
+            ].map((x, i) => (
+              <li key={i} className="flex gap-3">
+                <span className="grid size-6 shrink-0 place-items-center rounded-full border text-xs font-medium text-muted-foreground">{i + 1}</span>
+                <span className="pt-0.5 text-muted-foreground [&_b]:text-foreground">{x}</span>
+              </li>
+            ))}
+          </ol>
+        </CardContent>
+      </Card>
+
+      <Dialog open={!!events} onClose={() => setEvents(null)} wide title={`${events?.zone ?? ''}: Cloudflare olayları`} description="Son 24 saatte Cloudflare'in engellediği veya kontrol ettiği istekler (en yeni 100).">
+        {!events?.list ? <Loading /> : events.err ? <ErrorBox>{events.err}</ErrorBox> : events.list.length === 0 ? <div className="text-sm text-muted-foreground">Olay yok.</div> : (
+          <ul className="max-h-[60vh] divide-y overflow-y-auto rounded-lg border text-xs">
+            {events.list.map((e, i) => (
+              <li key={i} className="flex items-center gap-3 px-3 py-1.5">
+                <span className="w-12 shrink-0 text-muted-foreground">{new Date(e.time).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
+                <Tag tone={e.action === 'block' ? 'kirmizi' : 'amber'}>{e.action}</Tag>
+                <span className="w-28 shrink-0 truncate font-mono">{e.ip}</span>
+                <span className="w-8 shrink-0">{e.country}</span>
+                <span className="min-w-0 flex-1 truncate font-mono" title={e.path}>{e.host}{e.path}</span>
+                <span className="shrink-0 text-muted-foreground">{e.source}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Dialog>
     </div>
   )
 }

@@ -16,18 +16,24 @@ import (
 	"time"
 
 	"github.com/OsmanxCan/kokpit/internal/alerts"
+	"github.com/OsmanxCan/kokpit/internal/cloudflare"
 	"github.com/OsmanxCan/kokpit/internal/config"
 	"github.com/OsmanxCan/kokpit/internal/deploy"
 	"github.com/OsmanxCan/kokpit/internal/geoip"
+	"github.com/OsmanxCan/kokpit/internal/logrules"
 	"github.com/OsmanxCan/kokpit/internal/nginx"
+	"github.com/OsmanxCan/kokpit/internal/ports"
+	"github.com/OsmanxCan/kokpit/internal/portscan"
 	"github.com/OsmanxCan/kokpit/internal/security"
 	"github.com/OsmanxCan/kokpit/internal/services"
 	"github.com/OsmanxCan/kokpit/internal/settings"
+	"github.com/OsmanxCan/kokpit/internal/sitewizard"
 	"github.com/OsmanxCan/kokpit/internal/store"
 	"github.com/OsmanxCan/kokpit/internal/system"
 	"github.com/OsmanxCan/kokpit/internal/telegram"
 	"github.com/OsmanxCan/kokpit/internal/update"
 	"github.com/OsmanxCan/kokpit/internal/uptime"
+	"github.com/OsmanxCan/kokpit/internal/weblog"
 )
 
 type Server struct {
@@ -44,11 +50,21 @@ type Server struct {
 	geo    *geoip.DB
 	dep    *deploy.Engine
 	bot    *telegram.Bot
+	ps     *portscan.Engine
+	pw     *ports.Watcher
+
+	Web    *weblog.Analyzer
+	CF     *cloudflare.Client
+	Rules  *logrules.Engine
+	BanAny func(ip, reason string, hours int, action, by string) (string, error)
+	Wizard *sitewizard.Wizard
 }
 
 func New(cfg *config.Config, st *store.Store, set *settings.Store, sys *system.Collector, svc *services.Manager,
-	sec *security.Analyzer, al *alerts.Engine, upd *update.Checker, web fs.FS, up *uptime.Engine, geo *geoip.DB, dep *deploy.Engine, bot *telegram.Bot) *Server {
-	return &Server{cfg, st, set, sys, svc, sec, al, upd, web, up, geo, dep, bot}
+	sec *security.Analyzer, al *alerts.Engine, upd *update.Checker, web fs.FS, up *uptime.Engine, geo *geoip.DB, dep *deploy.Engine, bot *telegram.Bot,
+	ps *portscan.Engine, pw *ports.Watcher) *Server {
+	return &Server{cfg: cfg, st: st, set: set, sys: sys, svc: svc, sec: sec, alerts: al, upd: upd, webFS: web, up: up, geo: geo,
+		dep: dep, bot: bot, ps: ps, pw: pw}
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
@@ -115,6 +131,33 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/uptime/{id}/check", a(s.handleUptimeCheck))
 
 	mux.HandleFunc("GET /api/security/attacks", a(s.handleAttacks))
+	mux.HandleFunc("GET /api/security/scans", a(s.handleScans))
+	mux.HandleFunc("POST /api/security/bans", a(s.handleScanBan))
+	mux.HandleFunc("DELETE /api/security/bans/{ip}", a(s.handleScanUnban))
+	mux.HandleFunc("GET /api/security/ports", a(s.handlePorts))
+
+	mux.HandleFunc("GET /api/web/report", a(s.handleWebReport))
+	mux.HandleFunc("POST /api/web/realip", a(s.handleRealIPApply))
+	mux.HandleFunc("DELETE /api/web/realip", a(s.handleRealIPRemove))
+	mux.HandleFunc("POST /api/web/ban", a(s.handleWebBan))
+
+	mux.HandleFunc("GET /api/cloudflare", a(s.handleCF))
+	mux.HandleFunc("POST /api/cloudflare/token", a(s.handleCFToken))
+	mux.HandleFunc("DELETE /api/cloudflare/token", a(s.handleCFTokenDelete))
+	mux.HandleFunc("POST /api/cloudflare/zones/{id}/attack", a(s.handleCFAttack))
+	mux.HandleFunc("GET /api/cloudflare/zones/{id}/events", a(s.handleCFEvents))
+	mux.HandleFunc("DELETE /api/cloudflare/bans/{ip}", a(s.handleCFUnban))
+
+	mux.HandleFunc("GET /api/sitewizard", a(s.handleWizard))
+	mux.HandleFunc("POST /api/sitewizard/preview", a(s.handleWizardPreview))
+	mux.HandleFunc("POST /api/sitewizard", a(s.handleWizardCreate))
+	mux.HandleFunc("DELETE /api/sitewizard/{host}", a(s.handleWizardRemove))
+
+	mux.HandleFunc("GET /api/logrules", a(s.handleLogRules))
+	mux.HandleFunc("POST /api/logrules", a(s.handleLogRuleSave))
+	mux.HandleFunc("PUT /api/logrules/{id}", a(s.handleLogRuleSave))
+	mux.HandleFunc("DELETE /api/logrules/{id}", a(s.handleLogRuleDelete))
+	mux.HandleFunc("POST /api/logrules/test", a(s.handleLogRuleTest))
 
 	mux.HandleFunc("GET /api/firewall", a(s.handleFirewall))
 	mux.HandleFunc("POST /api/firewall/rules", a(s.handleFirewallAdd))

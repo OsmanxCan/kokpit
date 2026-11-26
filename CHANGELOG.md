@@ -3,6 +3,47 @@
 Bu dosyadaki her `## [sürüm]` bölümü, GitHub Release notu olarak otomatik kullanılır.
 Biçim: [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/), sürümleme: [SemVer](https://semver.org/lang/tr/).
 
+## [Yayımlanmamış]
+
+### Eklendi
+- **Port tarama tespiti** (Saldırılar → Port taramaları): Nmap, masscan gibi araçlarla yapılan taramalar firewall'un engellediği bağlantılardan tespit edilir; tarama türü (SYN, FIN, NULL, XMAS, UDP), taranan portlar ve ülke gösterilir
+  - **İnternet geneli** tarayıcılar (Shodan, Censys, Shadowserver…) ile **seni hedefleyenler** ayrı listelenir. Ters DNS kaydı ileri yönde de doğrulanır; saldırgan sahte bir kayıtla kendini zararsız gösteremez
+  - Gizlenme amaçlı taramalar (FIN/NULL/XMAS) ve SSH'a da giriş deneyen IP'ler her zaman hedefli sayılır
+  - UFW'nin kendi logları dakikada birkaç satırla sınırlı olduğu için Kokpit, engellenen paketler için IP başına sınırlı ayrı bir log kuralı ekler (tespit kapatılınca kaldırılır)
+  - **Otomatik engelleme** (varsayılan kapalı): hedefli taramaları firewall'da engeller; süre ayarlanabilir (varsayılan 24 saat, kalıcı da seçilebilir), süresi dolan engeller kendiliğinden kalkar. IP'ler elle de engellenip kaldırılabilir
+  - Cloudflare adresleri, özel ağlar, panele giriş yapılan IP'ler ve beyaz listedekiler asla engellenmez
+  - Yeni bildirim: **hedefli port taraması**
+- **Dinleyen portlar** (Firewall sayfası): sunucuda bağlantı bekleyen her program ve internetten erişilebilir olup olmadığı (dışarı açık / sınırlı / firewall engelliyor / sadece sunucu içi)
+  - Docker portlarının UFW kurallarını atladığı ayrıca belirtilir
+  - Dışarıya açık olmaması gereken servisler (PostgreSQL, Redis, MongoDB, Docker API…) uyarı olarak gösterilir
+  - Yeni bildirim: **dışarıya yeni port açıldı**
+- **Web saldırıları** (Saldırılar → Web): Nginx access loglarından (döndürülmüş ve sıkıştırılmış eskiler dahil) saldırı istekleri bulunur: hassas dosya arama (.env, .git, yedekler), SQL injection, dizin dolaşma, XSS, komut çalıştırma denemeleri (Log4Shell vb.), WordPress ve yönetim paneli taramaları, saldırı araçları (sqlmap, nikto, nuclei…), çok fazla 404 üreten IP'ler
+  - Hassas bir dosya isteğine 200 dönmüşse Kokpit dosyayı kendisi isteyip içeriğe bakar; gerçekten sızıyorsa kritik uyarı ve bildirim verir (tek sayfa uygulamalarının her yola ana sayfayı döndürmesi yanlış alarm üretmez)
+  - Saldıran IP'ler Cloudflare'de, sunucu firewall'unda veya ikisinde birden engellenebilir
+  - Yeni bildirim: **hassas dosya dışarıdan okunabiliyor**
+- **Nginx gerçek IP ayarı:** Cloudflare Tünel/proxy arkasında Nginx'in ziyaretçi IP'si yerine 127.0.0.1 kaydettiği tespit edilir; tek tıkla `CF-Connecting-IP` ayarı eklenir (sadece tünelden ve Cloudflare'den gelen başlığa güvenilir, `nginx -t` başarısız olursa geri alınır)
+- **Cloudflare entegrasyonu** (isteğe bağlı, Ayarlar → Cloudflare): API token doğrulanarak kaydedilir ve tarayıcıya hiç gönderilmez
+  - IP'leri tüm alan adlarında süreli veya kalıcı engelleme (süresi dolanlar kendiliğinden kalkar)
+  - "Under Attack" modunu panelden veya Telegram'dan (`/saldirimodu`, onay butonlu) açıp kapatma; kapatınca önceki güvenlik seviyesine dönülür
+  - Cloudflare'in son 24 saatte engellediği isteklerin listesi
+- **Log kuralları** (Güvenlik → Log kuralları): uygulama loglarında (dosya, systemd servisi veya PM2 uygulaması) `<IP>` içeren bir kalıba uyan satırlar izlenir; aynı IP belirlenen sürede eşiği aşarsa Cloudflare'de ve/veya firewall'da engellenir ya da sadece bildirilir
+  - Kural kaydedilmeden önce mevcut loglarda denenebilir: kaç satırın eşleştiği, hangi IP'lerin eşiği aştığı görünür
+  - Yeni bildirim: **log kuralı IP engelledi**
+- **OIDC izleme:** Uptime'da "Kimlik sağlayıcı" türü; keşif belgesi, issuer eşleşmesi ve JWKS'te imza anahtarı olduğu kontrol edilir
+- **Yeni site sihirbazı** (Siteler → Yeni site): alan adını ve uygulamanın portunu (veya statik site klasörünü) girince tek seferde yayına alır
+  - Nginx site dosyası: siteye özel access/error logları, WebSocket desteği, `.env`/`.git` gibi gizli dosyalara erişim engeli; statik sitelerde tek sayfa uygulaması seçeneği. `nginx -t` ile doğrulanıp yeniden yüklenir
+  - Cloudflare Tünel kuralı (yerel olarak yönetilen tünellerde): `config.yml` yedeklenir, `cloudflared ingress validate` ile doğrulanır, tünel yeniden başlatılır; tünel ayağa kalkmazsa eski dosyaya dönülür
+  - DNS kaydı: Cloudflare token varsa API ile, yoksa `cloudflared` sertifikası varsa onunla eklenir; ikisi de yoksa eklenecek kayıt gösterilir
+  - İsteğe bağlı uptime izleyicisi; ardından tek tıkla deploy projesi ekleme
+  - Her değişiklik uygulanmadan önce önizlenir; bir adım başarısız olursa önceki adımlar geri alınır. Sihirbazla oluşturulan siteler sonradan aynı yerden kaldırılabilir (uygulamanın dosyalarına dokunulmaz)
+- Saldırılar sayfası üç sekme oldu: SSH, Web, Port taramaları
+
+### Değişti
+- Örnek metinler ve testlerdeki alan adları tarafsız hale getirildi (example.com)
+
+### Düzeltildi
+- Bir deploy bittikten hemen sonra yenisi başlatılınca nadiren "zaten bir deploy sürüyor" hatası alınması
+
 ## [0.3.0] - 2026-11-25
 
 ### Eklendi

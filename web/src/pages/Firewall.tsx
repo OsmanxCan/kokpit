@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { RefreshCw, Plus, Trash2, ShieldAlert, ShieldCheck, ShieldOff, TerminalSquare } from 'lucide-react'
-import { api, type FwRule, type FwStatus } from '../lib/api'
+import { api, type FwRule, type FwStatus, type ListenPort } from '../lib/api'
 import { usePoll } from '../lib/hooks'
 import {
   Alert, Button, Card, CardContent, CardHeader, ConfirmButton, Dialog, Empty, ErrorBox, Field, Input, Loading,
@@ -91,6 +91,57 @@ function AddRule({ open, onClose, onDone, sshPort }: { open: boolean; onClose: (
         {err && <ErrorBox>{err}</ErrorBox>}
       </div>
     </Dialog>
+  )
+}
+
+const exposureInfo: Record<ListenPort['exposure'], { label: string; tone: 'kirmizi' | 'amber' | 'yesil' | 'soluk' }> = {
+  open: { label: 'Dışarı açık', tone: 'amber' },
+  limited: { label: 'Sınırlı', tone: 'soluk' },
+  protected: { label: 'Firewall engelliyor', tone: 'yesil' },
+  local: { label: 'Sadece sunucu içi', tone: 'soluk' },
+}
+
+function ListeningPorts() {
+  const { data, error, reload, loading } = usePoll<{ items: ListenPort[]; error?: string; at: number }>('/api/security/ports', 60000)
+  const [showLocal, setShowLocal] = useState(false)
+  const items = (data?.items ?? []).filter((p) => showLocal || p.exposure !== 'local')
+  const risky = (data?.items ?? []).filter((p) => p.risk)
+  return (
+    <Card>
+      <CardHeader title="Dinleyen portlar"
+        description="Sunucuda bağlantı bekleyen programlar ve internetten erişilip erişilemedikleri. Dışarıya yeni bir port açılırsa bildirim gelir."
+        action={<Button size="sm" variant="ghost" onClick={() => { api.get('/api/security/ports?refresh=1').then(reload) }} loading={loading} aria-label="Yenile"><RefreshCw size={14} /></Button>} />
+      <CardContent className="px-0 pb-0">
+        {error && !data ? <div className="px-6 pb-6"><ErrorBox>{error}</ErrorBox></div> : !data ? <Loading /> : data.error ? <div className="px-6 pb-6"><ErrorBox>{data.error}</ErrorBox></div> : (
+          <>
+            {risky.length > 0 && (
+              <div className="mx-6 mb-4"><Alert tone="kirmizi" title="Dışarıya açık olmaması gereken servis var">
+                {risky.map((p) => `${p.risk} (${p.port}/${p.proto})`).join(', ')}. Sadece sunucu içinden (127.0.0.1) dinleyecek şekilde ayarla veya firewall kuralını kaldır.
+              </Alert></div>
+            )}
+            <Table>
+              <THead><Tr><Th>Port</Th><Th>Program</Th><Th>Dinlenen adres</Th><Th>Durum</Th><Th>Açıklama</Th></Tr></THead>
+              <tbody>
+                {items.map((p) => (
+                  <Tr key={p.proto + p.port}>
+                    <Td className="font-mono text-xs whitespace-nowrap">{p.port}/{p.proto}</Td>
+                    <Td>{p.program || '—'}{p.docker && <span className="ml-1.5"><Tag tone="mavi">Docker</Tag></span>}</Td>
+                    <Td className="font-mono text-xs text-muted-foreground">{p.addrs.map((a) => (a === '0.0.0.0' || a === '*' || a === '::' ? 'tümü' : a)).filter((a, i, l) => l.indexOf(a) === i).join(', ')}</Td>
+                    <Td><Tag tone={p.risk ? 'kirmizi' : exposureInfo[p.exposure].tone}>{exposureInfo[p.exposure].label}</Tag></Td>
+                    <Td className="text-muted-foreground">{p.reason}{p.risk && <span className="text-destructive"> · {p.risk}</span>}</Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+            <div className="border-t px-6 py-3">
+              <Button size="sm" variant="ghost" onClick={() => setShowLocal(!showLocal)}>
+                {showLocal ? 'Sadece sunucu içi olanları gizle' : `Sadece sunucu içi olanları da göster (${data.items.filter((p) => p.exposure === 'local').length})`}
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -235,6 +286,8 @@ export function Firewall() {
           )}
         </CardContent>
       </Card>
+
+      <ListeningPorts />
 
       <AddRule open={add} onClose={() => setAdd(false)} onDone={setData} sshPort={data.sshPort} />
 

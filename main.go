@@ -18,25 +18,33 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/OsmanxCan/kokpit/internal/alerts"
+	"github.com/OsmanxCan/kokpit/internal/cloudflare"
 	"github.com/OsmanxCan/kokpit/internal/config"
 	"github.com/OsmanxCan/kokpit/internal/crypt"
 	"github.com/OsmanxCan/kokpit/internal/deploy"
+	"github.com/OsmanxCan/kokpit/internal/firewall"
 	"github.com/OsmanxCan/kokpit/internal/geoip"
+	"github.com/OsmanxCan/kokpit/internal/logrules"
+	"github.com/OsmanxCan/kokpit/internal/ports"
+	"github.com/OsmanxCan/kokpit/internal/portscan"
 	"github.com/OsmanxCan/kokpit/internal/security"
 	"github.com/OsmanxCan/kokpit/internal/server"
 	"github.com/OsmanxCan/kokpit/internal/services"
 	"github.com/OsmanxCan/kokpit/internal/settings"
+	"github.com/OsmanxCan/kokpit/internal/sitewizard"
 	"github.com/OsmanxCan/kokpit/internal/store"
 	"github.com/OsmanxCan/kokpit/internal/system"
 	"github.com/OsmanxCan/kokpit/internal/telegram"
 	"github.com/OsmanxCan/kokpit/internal/update"
 	"github.com/OsmanxCan/kokpit/internal/uptime"
+	"github.com/OsmanxCan/kokpit/internal/weblog"
 	"github.com/OsmanxCan/kokpit/web"
 )
 
@@ -189,7 +197,140 @@ func serve(cfg *config.Config) {
 	bot := telegram.New(set, st, sys, svc, up, dep)
 	bot.Start()
 
-	srv := server.New(cfg, st, set, sys, svc, sec, al, upd, web.Dist(), up, geo, dep, bot)
+	// port tarama tespiti
+	ps := portscan.Open(cfg.DataDir, func() settings.PortScan { return set.Get().PortScan })
+	ps.Country = geo.Country
+	ps.BanFunc = firewall.Ban
+	ps.UnbanFunc = firewall.Unban
+	ps.Protected = func(ip string) bool {
+		for _, s := range st.Sessions() {
+			if s.IP == ip {
+				return true
+			}
+		}
+		return false
+	}
+	ps.SSHTried = func(ip string) bool {
+		tried := false
+		security.SSHScan("-1h", regexp.QuoteMeta(ip), func(e security.SSHEvent) {
+			if e.IP == ip && e.Type != "accepted" {
+				tried = true
+			}
+		})
+		return tried
+	}
+	ps.OnScan = func(sc portscan.Scan) {
+		engel := ""
+		if sc.Banned {
+			h := set.Get().PortScan.BanHours
+			engel = "\n🚫 Kalıcı olarak engellendi"
+			if h > 0 {
+				engel = fmt.Sprintf("\n🚫 %d saat engellendi", h)
+			}
+		}
+		al.Fire("port_scan", sc.IP, map[string]string{"ip": sc.IP, "ulke": flagCC(sc.CC), "port": fmt.Sprint(sc.Ports),
+			"tur": strings.Join(sc.Types, ", "), "neden": sc.Reason, "engel": engel})
+	}
+	ps.Run()
+
+	// dışarıya açık portlar
+	pw := ports.NewWatcher()
+	pw.OnNew = func(it ports.Item) {
+		risk := ""
+		if it.Risk != "" {
+			risk = "\n⚠️ " + it.Risk + " genelde dışarıya açık olmamalı"
+		}
+		al.Fire("port_open", it.Key(), map[string]string{"port": fmt.Sprintf("%d/%s", it.Port, it.Proto), "program": orDash(it.Program),
+			"neden": it.Reason, "risk": risk})
+	}
+	pw.Start()
+
+	// Cloudflare (isteğe bağlı) ve ortak IP engelleme
+	cf := cloudflare.Open(cfg.DataDir, func() string { return set.Get().CFToken })
+	cf.Start()
+	banAny := func(ip, reason string, hours int, action, by string) (string, error) {
+		if why := ps.WhyProtected(ip); why != "" {
+			return "", fmt.Errorf("%s engellenemez: %s", ip, why)
+		}
+		useCF := action == "cloudflare" || (action == "auto" && cf.Enabled())
+		useFW := action == "firewall" || action == "auto"
+		if action == "cloudflare" && !cf.Enabled() {
+			return "", fmt.Errorf("Cloudflare ayarlanmamış")
+		}
+		var done []string
+		var lastErr error
+		if useCF {
+			if err := cf.BanIP(ip, reason, hours, by); err != nil {
+				lastErr = err
+			} else {
+				done = append(done, "Cloudflare")
+			}
+		}
+		if useFW {
+			if !firewall.Active() {
+				if !useCF {
+					lastErr = fmt.Errorf("UFW kapalı olduğu için firewall'da engellenemedi")
+				}
+			} else if err := ps.Ban(ip, reason, hours, by); err != nil {
+				lastErr = err
+			} else {
+				done = append(done, "firewall")
+			}
+		}
+		if len(done) == 0 {
+			return "", lastErr
+		}
+		return strings.Join(done, " ve "), nil
+	}
+
+	// web logları
+	wl := weblog.NewAnalyzer()
+	wl.Country = geo.Country
+	wl.Blocked = func(ip string) string {
+		if cf.Banned(ip) {
+			return "cloudflare"
+		}
+		for _, b := range ps.Bans() {
+			if b.IP == ip {
+				return "firewall"
+			}
+		}
+		return ""
+	}
+	wl.OnFind = func(f weblog.Finding) {
+		al.Fire("web_exposed", f.URL, map[string]string{"adres": f.URL, "site": f.Site})
+	}
+	go func() { // saatte bir arka planda analiz et (sızıntı bildirimi için)
+		time.Sleep(2 * time.Minute)
+		for {
+			wl.Report("24h", true)
+			time.Sleep(time.Hour)
+		}
+	}()
+
+	// uygulama log kuralları
+	lr := logrules.New(func() []settings.LogRule { return set.Get().LogRules })
+	lr.PM2Logs = func(name string) []string { f, _ := svc.PM2LogFiles(name); return f }
+	lr.Ban = func(ip, reason string, hours int, action string) (string, error) {
+		return banAny(ip, "log kuralı: "+reason, hours, action, "log kuralı")
+	}
+	lr.OnHit = func(r settings.LogRule, h logrules.Hit) {
+		al.Fire("app_ban", r.ID+h.IP, map[string]string{"kural": r.Name, "ip": h.IP, "ulke": flagCC(geo.Country(h.IP)),
+			"sayi": fmt.Sprint(h.Count), "sonuc": h.Result})
+	}
+	lr.Start()
+
+	srv := server.New(cfg, st, set, sys, svc, sec, al, upd, web.Dist(), up, geo, dep, bot, ps, pw)
+	srv.Web, srv.CF, srv.Rules, srv.BanAny = wl, cf, lr, banAny
+	srv.Wizard = sitewizard.New(cfg.DataDir, sitewizard.Deps{
+		CFEnabled: cf.Enabled, EnsureCNAME: cf.EnsureCNAME, DeleteRecord: cf.DeleteRecord,
+		AddMonitor: func(name, url string) (string, error) {
+			m, err := up.Add(uptime.Monitor{Name: name, URL: url, Enabled: true})
+			return m.ID, err
+		},
+		DelMonitor: up.Delete,
+	})
+	bot.CF = cf
 	hs := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           srv.Handler(),
@@ -349,4 +490,20 @@ func shortCommit(c string) string {
 		return c[:7]
 	}
 	return c
+}
+
+// flagCC ülke kodunu bayrak ve kodla gösterir: "🇳🇱 NL".
+func flagCC(cc string) string {
+	if len(cc) != 2 {
+		return "ülke bilinmiyor"
+	}
+	r := []rune(strings.ToUpper(cc))
+	return string([]rune{0x1F1E6 + r[0] - 'A', 0x1F1E6 + r[1] - 'A'}) + " " + strings.ToUpper(cc)
+}
+
+func orDash(s string) string {
+	if s == "" {
+		return "—"
+	}
+	return s
 }

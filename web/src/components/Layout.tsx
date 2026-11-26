@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Cpu, Boxes, Globe, ShieldCheck, Bell, ScrollText, LogOut, PanelLeft, X,
-  Settings, ArrowUpCircle, Activity, BrickWall, Radar, FolderOpen, SquareTerminal, Rocket, Sun, Moon, Monitor, EllipsisVertical, UserRound, Github,
+  Settings, ArrowUpCircle, Activity, BrickWall, Radar, FolderOpen, SquareTerminal, Rocket, ListFilter, Sun, Moon, Monitor, EllipsisVertical, UserRound, Github,
 } from 'lucide-react'
 import { api, type Me } from '../lib/api'
 import { getTheme, setTheme, type Theme } from '../lib/theme'
@@ -25,14 +25,15 @@ const groups = [
   { label: 'Güvenlik', items: [
     { to: '/guvenlik', label: 'Güvenlik', icon: ShieldCheck },
     { to: '/firewall', label: 'Firewall', icon: BrickWall },
-    { to: '/saldirilar', label: 'Saldırı haritası', icon: Radar },
+    { to: '/saldirilar', label: 'Saldırılar', icon: Radar },
+    { to: '/log-kurallari', label: 'Log kuralları', icon: ListFilter },
     { to: '/bildirimler', label: 'Bildirimler', icon: Bell },
     { to: '/kayitlar', label: 'İşlem kayıtları', icon: ScrollText },
   ] },
 ]
 
 const titles: Record<string, string> = {
-  '/': 'Genel bakış', '/sistem': 'Sistem', '/uptime': 'Uptime', '/dosyalar': 'Dosyalar', '/deploy': 'Deploy', '/terminal': 'Terminal', '/firewall': 'Firewall', '/saldirilar': 'Saldırı haritası', '/projeler': 'Projeler', '/siteler': 'Siteler', '/guvenlik': 'Güvenlik',
+  '/': 'Genel bakış', '/sistem': 'Sistem', '/uptime': 'Uptime', '/dosyalar': 'Dosyalar', '/deploy': 'Deploy', '/log-kurallari': 'Log kuralları', '/terminal': 'Terminal', '/firewall': 'Firewall', '/saldirilar': 'Saldırılar', '/projeler': 'Projeler', '/siteler': 'Siteler', '/guvenlik': 'Güvenlik',
   '/bildirimler': 'Bildirimler', '/kayitlar': 'İşlem kayıtları', '/ayarlar': 'Ayarlar', '/guncellemeler': 'Güncellemeler',
 }
 

@@ -18,6 +18,7 @@ import { Firewall } from './pages/Firewall'
 import { Attacks } from './pages/Attacks'
 import { Files } from './pages/Files'
 import { Deploy } from './pages/Deploy'
+import { LogRules } from './pages/LogRules'
 
 // xterm büyük olduğu için terminal sayfası ayrı yüklenir
 const Terminal = lazy(() => import('./pages/Terminal').then((m) => ({ default: m.Terminal })))
@@ -51,6 +52,7 @@ export default function App() {
           <Route path="/uptime" element={<Uptime />} />
           <Route path="/firewall" element={<Firewall />} />
           <Route path="/saldirilar" element={<Attacks />} />
+          <Route path="/log-kurallari" element={<LogRules />} />
           <Route path="/deploy" element={<Deploy />} />
           <Route path="/dosyalar" element={<Files />} />
           <Route path="/terminal" element={<Suspense fallback={<Loading />}><Terminal /></Suspense>} />

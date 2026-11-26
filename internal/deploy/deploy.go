@@ -140,7 +140,7 @@ func Validate(p *Project) error {
 		return errors.New("proje adı 1–50 karakter olmalı")
 	}
 	if !filepath.IsAbs(p.Dir) || p.Dir == "/" {
-		return errors.New("proje klasörü tam bir yol olmalı (örn. /var/www/cantools)")
+		return errors.New("proje klasörü tam bir yol olmalı (örn. /var/www/uygulama)")
 	}
 	if fi, err := os.Stat(p.Dir); err != nil || !fi.IsDir() {
 		return errors.New(p.Dir + " bulunamadı veya bir klasör değil")
@@ -514,7 +514,18 @@ func (e *Engine) execute(ctx context.Context, p Project, r Run, l *liveRun) {
 		default:
 			l.line("✗ Deploy başarısız: %s", r.Error)
 		}
-		e.update(r)
+		// Sonucu kaydetmek ve projeyi serbest bırakmak tek adımda yapılır; böylece durum
+		// "bitti" görünür görünmez yeni bir deploy başlatılabilir.
+		e.mu.Lock()
+		for i := range e.d.Runs {
+			if e.d.Runs[i].ID == r.ID {
+				e.d.Runs[i] = r
+			}
+		}
+		delete(e.busy, p.ID)
+		delete(e.live, r.ID)
+		e.saveLocked()
+		e.mu.Unlock()
 		l.mu.Lock()
 		l.done = true
 		if l.f != nil {
@@ -525,10 +536,6 @@ func (e *Engine) execute(ctx context.Context, p Project, r Run, l *liveRun) {
 		l.mu.Unlock()
 		close(ch)
 		l.cancel()
-		e.mu.Lock()
-		delete(e.busy, p.ID)
-		delete(e.live, r.ID)
-		e.mu.Unlock()
 		if e.OnFinish != nil {
 			e.OnFinish(Event{Project: p, Run: r})
 		}

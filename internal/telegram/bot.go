@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/OsmanxCan/kokpit/internal/cloudflare"
 	"github.com/OsmanxCan/kokpit/internal/deploy"
 	"github.com/OsmanxCan/kokpit/internal/services"
 	"github.com/OsmanxCan/kokpit/internal/settings"
@@ -40,6 +41,8 @@ type Bot struct {
 	svc *services.Manager
 	up  *uptime.Engine
 	dep *deploy.Engine
+
+	CF *cloudflare.Client // isteğe bağlı
 
 	API     string // test için değiştirilebilir
 	mu      sync.Mutex
@@ -172,6 +175,7 @@ var commands = []map[string]string{
 	{"command": "siteler", "description": "İzlenen sitelerin durumu"},
 	{"command": "deploy", "description": "Bir projeyi deploy et"},
 	{"command": "yenidenbaslat", "description": "Bir PM2 uygulamasını yeniden başlat"},
+	{"command": "saldirimodu", "description": "Cloudflare \"Under Attack\" modunu aç/kapat"},
 	{"command": "yardim", "description": "Komutlar"},
 }
 
@@ -296,6 +300,8 @@ func (b *Bot) command(token string, chat int64, text string) {
 		b.deployMenu(token, chat, 0)
 	case "yenidenbaslat", "restart":
 		b.restartMenu(token, chat, 0)
+	case "saldirimodu":
+		b.attackMenu(token, chat)
 	default:
 		b.send(token, chat, "Bilinmeyen komut. /yardim yazarak komutları görebilirsin.", nil)
 	}
@@ -374,6 +380,31 @@ func (b *Bot) restartMenu(token string, chat, editMsg int64) {
 	b.send(token, chat, text, keyboard(rows))
 }
 
+func (b *Bot) attackMenu(token string, chat int64) {
+	if b.CF == nil || !b.CF.Enabled() {
+		b.send(token, chat, "Cloudflare ayarlanmamış. Panelde Ayarlar → Cloudflare bölümünden token ekleyebilirsin.", nil)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	zs, err := b.CF.Zones(ctx, true)
+	if err != nil {
+		b.send(token, chat, "Cloudflare okunamadı: "+html.EscapeString(err.Error()), nil)
+		return
+	}
+	var rows [][]button
+	for _, z := range zs {
+		on := z.Level == "under_attack"
+		label := "🛡 " + z.Name + ": aç"
+		kind := "attack-on"
+		if on {
+			label, kind = "✅ "+z.Name+": kapat (şu an açık)", "attack-off"
+		}
+		rows = append(rows, []button{{Text: label, Data: "s:" + b.remember(action{kind: kind, target: z.ID, label: z.Name}, 10*time.Minute)}})
+	}
+	b.send(token, chat, "<b>Under Attack modu</b>\nAçıkken ziyaretçiler siteye girmeden önce birkaç saniyelik bir tarayıcı kontrolünden geçer; yoğun saldırılarda kullanılır.", keyboard(rows))
+}
+
 func (b *Bot) callback(token string, chat, msg int64, cbID, data string) {
 	answer := func(text string) {
 		p := map[string]any{"callback_query_id": cbID}
@@ -409,6 +440,10 @@ func (b *Bot) callback(token string, chat, msg int64, cbID, data string) {
 			q = "🚀 <b>" + html.EscapeString(a.label) + "</b> deploy edilsin mi?"
 		case "restart":
 			q = "🔁 <b>" + html.EscapeString(a.label) + "</b> yeniden başlatılsın mı?"
+		case "attack-on":
+			q = "🛡 <b>" + html.EscapeString(a.label) + "</b> için Under Attack modu açılsın mı?"
+		case "attack-off":
+			q = "<b>" + html.EscapeString(a.label) + "</b> için Under Attack modu kapatılsın mı?"
 		}
 		yes := b.remember(action{kind: "ok-" + a.kind, target: a.target, label: a.label}, 2*time.Minute)
 		b.edit(token, chat, msg, q+"\n\n<i>Onay 2 dakika geçerli.</i>", keyboard([][]button{{
@@ -429,6 +464,15 @@ func (b *Bot) callback(token string, chat, msg int64, cbID, data string) {
 		switch a.kind {
 		case "ok-deploy":
 			b.runDeploy(token, chat, msg, a)
+		case "ok-attack-on", "ok-attack-off":
+			on := a.kind == "ok-attack-on"
+			err := b.CF.SetUnderAttack(a.target, on)
+			b.st.Audit("telegram", "telegram", map[bool]string{true: "under attack aç", false: "under attack kapat"}[on], a.label, err == nil, errText(err))
+			if err != nil {
+				b.edit(token, chat, msg, "❌ "+html.EscapeString(err.Error()), nil)
+				return
+			}
+			b.edit(token, chat, msg, map[bool]string{true: "🛡 <b>" + html.EscapeString(a.label) + "</b> için Under Attack modu açıldı.\nKapatmak için /saldirimodu", false: "✅ <b>" + html.EscapeString(a.label) + "</b> için Under Attack modu kapatıldı."}[on], nil)
 		case "ok-restart":
 			b.edit(token, chat, msg, "🔁 <b>"+html.EscapeString(a.label)+"</b> yeniden başlatılıyor…", nil)
 			_, err := b.svc.Action("pm2", a.target, "restart")

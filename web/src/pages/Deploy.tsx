@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Rocket, Plus, Pencil, Trash2, History, EllipsisVertical, GitBranch, FolderGit2, Square, ArrowUp, ArrowDown, X,
   RotateCcw, Send, CheckCircle2, XCircle, Undo2, LoaderCircle, Ban, ScrollText,
@@ -177,20 +178,20 @@ function ProjectForm({ open, initial, pm2, onClose, onSaved }: { open: boolean; 
   async function save() {
     setBusy(true); setErr('')
     try {
-      if (initial) await api.put(`/api/deploy/${initial.id}`, f)
+      if (initial?.id) await api.put(`/api/deploy/${initial.id}`, f)
       else await api.post('/api/deploy', f)
-      toast.ok(initial ? 'Proje güncellendi' : 'Proje eklendi')
+      toast.ok(initial?.id ? 'Proje güncellendi' : 'Proje eklendi')
       onSaved(); onClose()
     } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
   }
 
   return (
-    <Dialog open={open} onClose={onClose} wide title={initial ? 'Projeyi düzenle' : 'Deploy projesi ekle'}
+    <Dialog open={open} onClose={onClose} wide title={initial?.id ? 'Projeyi düzenle' : 'Deploy projesi ekle'}
       description="Deploy sırasıyla şunları yapar: git'ten en yeni sürümü çeker, adımları çalıştırır, PM2 uygulamasını yeniden başlatır ve siteyi kontrol eder."
-      footer={<><Button onClick={onClose}>Vazgeç</Button><Button variant="default" onClick={save} loading={busy}>{initial ? 'Kaydet' : 'Projeyi ekle'}</Button></>}>
+      footer={<><Button onClick={onClose}>Vazgeç</Button><Button variant="default" onClick={save} loading={busy}>{initial?.id ? 'Kaydet' : 'Projeyi ekle'}</Button></>}>
       <div className="space-y-5">
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Proje adı"><Input value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="CanTools" maxLength={50} autoFocus={!initial} /></Field>
+          <Field label="Proje adı"><Input value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="Web sitesi" maxLength={50} autoFocus={!initial} /></Field>
           <Field label="Klasör" hint="Sunucudaki proje klasörü (git deposu)"><Input value={f.dir} onChange={(e) => set('dir', e.target.value)} className="font-mono" /></Field>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -236,7 +237,7 @@ function ProjectForm({ open, initial, pm2, onClose, onSaved }: { open: boolean; 
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Sağlık kontrolü adresi" hint="İsteğe bağlı; deploy sonrası bu adres yanıt vermezse deploy başarısız sayılır">
-            <Input value={f.healthUrl} onChange={(e) => set('healthUrl', e.target.value)} placeholder="https://cantools.ocbstd.com" />
+            <Input value={f.healthUrl} onChange={(e) => set('healthUrl', e.target.value)} placeholder="https://app.example.com" />
           </Field>
           <Field label="Çalıştıran kullanıcı" hint="Boş: klasörün sahibi">
             <Input value={f.runAs} onChange={(e) => set('runAs', e.target.value)} placeholder="klasörün sahibi" className="font-mono" />
@@ -272,6 +273,14 @@ export function Deploy() {
   const [log, setLog] = useState<string | null>(null)
   const [hist, setHist] = useState<DeployItem | null>(null)
   const [starting, setStarting] = useState('')
+  const [params, setParams] = useSearchParams()
+  useEffect(() => {
+    if (params.get('yeni') === '1') {
+      const name = params.get('ad') ?? ''
+      setForm({ open: true, p: { ...blank, name, dir: params.get('klasor') || '/var/www/', healthUrl: name.includes('.') ? `https://${name}` : '' } as DeployProject })
+      setParams({}, { replace: true })
+    }
+  }, [params, setParams])
 
   async function run(p: DeployItem, target = '') {
     setStarting(p.id)

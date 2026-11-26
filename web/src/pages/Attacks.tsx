@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { PortScans } from './PortScans'
+import { WebAttacks } from './WebAttacks'
+import { countryName, flag } from '../lib/geo'
 import { RefreshCw, Globe2, LoaderCircle } from 'lucide-react'
 import { type AttackReport } from '../lib/api'
 import { usePoll } from '../lib/hooks'
@@ -8,16 +12,6 @@ import {
 } from '../components/ui'
 
 type MapData = { viewBox: string; locations: { id: string; d: string }[] }
-
-let regionNames: Intl.DisplayNames | null = null
-try { regionNames = new Intl.DisplayNames(['tr'], { type: 'region' }) } catch { /* eski tarayıcı */ }
-export const countryName = (cc: string) => {
-  if (!cc || cc === '??') return 'Bilinmiyor'
-  try { return regionNames?.of(cc) ?? cc } catch { return cc }
-}
-export const flag = (cc: string) => (cc && cc.length === 2 && cc !== '??')
-  ? String.fromCodePoint(...[...cc.toUpperCase()].map((c) => 0x1f1a5 + c.charCodeAt(0)))
-  : '🏳️'
 
 const nf = new Intl.NumberFormat('tr-TR')
 
@@ -105,7 +99,21 @@ function Timeline({ values, range }: { values: number[]; range: '24h' | '7d' }) 
   )
 }
 
+// Saldırılar sayfası: SSH denemeleri ve port taramaları iki sekmede.
 export function Attacks() {
+  const [params, setParams] = useSearchParams()
+  const s = params.get('sekme')
+  const tab = s === 'tarama' || s === 'web' ? s : 'ssh'
+  const switcher = (
+    <Tabs value={tab} onChange={(v) => setParams(v === 'ssh' ? {} : { sekme: v })}
+      items={[{ id: 'ssh', label: 'SSH' }, { id: 'web', label: 'Web' }, { id: 'tarama', label: 'Port taramaları' }]} />
+  )
+  if (tab === 'tarama') return <PortScans switcher={switcher} />
+  if (tab === 'web') return <WebAttacks switcher={switcher} />
+  return <SSHAttacks switcher={switcher} />
+}
+
+function SSHAttacks({ switcher }: { switcher: ReactNode }) {
   const [range, setRange] = useState<'24h' | '7d'>('24h')
   const [fresh, setFresh] = useState(0)
   const [allIps, setAllIps] = useState(false)
@@ -116,10 +124,11 @@ export function Attacks() {
 
   const header = (
     <PageHeader
-      title="Saldırı haritası"
+      title="Saldırılar"
       desc="SSH'a yapılan başarısız giriş denemelerinin hangi ülkelerden geldiği. Ülke bilgisi sunucudaki yerel veritabanından bulunur; IP adresleri hiçbir dış servise gönderilmez."
       action={
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {switcher}
           <Tabs value={range} onChange={setRange} items={[{ id: '24h', label: '24 saat' }, { id: '7d', label: '7 gün' }]} />
           <Button onClick={() => { setFresh(Date.now()); reload() }} loading={loading} aria-label="Yenile"><RefreshCw size={14} /></Button>
         </div>

@@ -28,17 +28,21 @@ type Server struct {
 	CertExpiry int64    `json:"certExpiry"` // unix
 	CertIssuer string   `json:"certIssuer"`
 	Redirect   bool     `json:"redirect"`
+	AccessLog  string   `json:"accessLog"` // bu sitenin ayrı access log dosyası (varsa)
 }
 
 // Sites tüm server bloklarını döner.
-func Sites() ([]Server, error) {
-	entries, err := os.ReadDir(SitesDir)
+func Sites() ([]Server, error) { return SitesIn(SitesDir) }
+
+// SitesIn verilen klasördeki site dosyalarının server bloklarını döner.
+func SitesIn(dir string) ([]Server, error) {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return []Server{}, nil
 	}
 	var out []Server
 	for _, e := range entries {
-		p := filepath.Join(SitesDir, e.Name())
+		p := filepath.Join(dir, e.Name())
 		b, err := os.ReadFile(p)
 		if err != nil {
 			continue
@@ -149,6 +153,10 @@ func apply(s *Server, st []string) {
 		if len(args) > 0 {
 			s.CertFile = args[0]
 			s.SSL = true
+		}
+	case "access_log":
+		if len(args) > 0 && args[0] != "off" && !strings.HasPrefix(args[0], "syslog:") {
+			s.AccessLog = args[0]
 		}
 	case "return":
 		if len(args) > 0 && (args[0] == "301" || args[0] == "302") {

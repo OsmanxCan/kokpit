@@ -32,6 +32,8 @@ type Monitor struct {
 	Keyword   string `json:"keyword"`  // sayfada geçmesi gereken metin (boş = kontrol yok)
 	Enabled   bool   `json:"enabled"`
 	CreatedAt int64  `json:"createdAt"`
+	Kind      string `json:"kind"`   // http (varsayılan) | oidc
+	Issuer    string `json:"issuer"` // oidc: beklenen issuer
 }
 
 // Check tek bir kontrolün sonucu.
@@ -180,8 +182,11 @@ func (e *Engine) st(id string) *state {
 	return s
 }
 
-// probe tek bir HTTP kontrolü yapar.
+// probe tek bir kontrol yapar.
 func (e *Engine) probe(m Monitor) (Check, int64, string) {
+	if m.Kind == "oidc" {
+		return e.probeOIDC(m)
+	}
 	c := Check{TS: time.Now().Unix()}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(m.Timeout)*time.Second)
 	defer cancel()
@@ -224,6 +229,83 @@ func (e *Engine) probe(m Monitor) (Check, int64, string) {
 	}
 	c.OK = true
 	return c, certExp, issuer
+}
+
+// probeOIDC kimlik sağlayıcının keşif belgesini ve imza anahtarlarını kontrol eder:
+// belge okunabiliyor mu, issuer beklenen değer mi, JWKS'te en az bir anahtar var mı.
+func (e *Engine) probeOIDC(m Monitor) (Check, int64, string) {
+	c := Check{TS: time.Now().Unix()}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(m.Timeout)*time.Second)
+	defer cancel()
+	start := time.Now()
+	get := func(u string, v any) (int, int64, string, error) {
+		req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+		if err != nil {
+			return 0, 0, "", err
+		}
+		req.Header.Set("User-Agent", "Kokpit-Uptime/1.0")
+		req.Header.Set("Accept", "application/json")
+		resp, err := e.client.Do(req)
+		if err != nil {
+			return 0, 0, "", err
+		}
+		defer resp.Body.Close()
+		var exp int64
+		var iss string
+		if resp.TLS != nil && len(resp.TLS.PeerCertificates) > 0 {
+			exp = resp.TLS.PeerCertificates[0].NotAfter.Unix()
+			iss = resp.TLS.PeerCertificates[0].Issuer.CommonName
+		}
+		if resp.StatusCode != 200 {
+			return resp.StatusCode, exp, iss, fmt.Errorf("HTTP %d", resp.StatusCode)
+		}
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(v); err != nil {
+			return resp.StatusCode, exp, iss, errors.New("geçerli JSON değil")
+		}
+		return resp.StatusCode, exp, iss, nil
+	}
+	var disc struct {
+		Issuer string `json:"issuer"`
+		JWKS   string `json:"jwks_uri"`
+		Auth   string `json:"authorization_endpoint"`
+		Token  string `json:"token_endpoint"`
+	}
+	status, certExp, certIss, err := get(m.URL, &disc)
+	c.Status = status
+	if err != nil {
+		c.MS = int(time.Since(start).Milliseconds())
+		c.Error = "keşif belgesi: " + shortErr(err)
+		return c, certExp, certIss
+	}
+	switch {
+	case disc.Issuer == "":
+		c.Error = "keşif belgesinde issuer yok"
+	case m.Issuer != "" && strings.TrimSuffix(disc.Issuer, "/") != strings.TrimSuffix(m.Issuer, "/"):
+		c.Error = "issuer uyuşmuyor: " + disc.Issuer
+	case disc.JWKS == "":
+		c.Error = "keşif belgesinde jwks_uri yok"
+	case disc.Auth == "" || disc.Token == "":
+		c.Error = "authorization_endpoint veya token_endpoint eksik"
+	}
+	if c.Error != "" {
+		c.MS = int(time.Since(start).Milliseconds())
+		return c, certExp, certIss
+	}
+	var jwks struct {
+		Keys []map[string]any `json:"keys"`
+	}
+	if _, _, _, err := get(disc.JWKS, &jwks); err != nil {
+		c.MS = int(time.Since(start).Milliseconds())
+		c.Error = "JWKS: " + shortErr(err)
+		return c, certExp, certIss
+	}
+	c.MS = int(time.Since(start).Milliseconds())
+	if len(jwks.Keys) == 0 {
+		c.Error = "JWKS'te hiç imza anahtarı yok"
+		return c, certExp, certIss
+	}
+	c.OK = true
+	return c, certExp, certIss
 }
 
 func shortErr(err error) string {
@@ -346,6 +428,24 @@ func newID() string {
 // Validate izleyiciyi doğrular ve varsayılanları doldurur.
 func Validate(m *Monitor) error {
 	m.URL = strings.TrimSpace(m.URL)
+	switch m.Kind {
+	case "", "http":
+		m.Kind, m.Issuer = "http", ""
+	case "oidc":
+		// kullanıcı issuer adresini girer; keşif belgesinin adresi ondan türetilir
+		iss := strings.TrimSpace(m.Issuer)
+		if iss == "" {
+			iss = strings.TrimSuffix(strings.TrimSuffix(m.URL, "/.well-known/openid-configuration"), "/")
+		}
+		if !strings.Contains(iss, "://") {
+			iss = "https://" + iss
+		}
+		m.Issuer = strings.TrimSuffix(iss, "/")
+		m.URL = m.Issuer + "/.well-known/openid-configuration"
+		m.Keyword, m.Expect = "", 0
+	default:
+		return errors.New("izleyici türü http veya oidc olmalı")
+	}
 	if !strings.Contains(m.URL, "://") {
 		m.URL = "https://" + m.URL
 	}

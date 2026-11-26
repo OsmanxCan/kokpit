@@ -105,6 +105,7 @@ export interface EventSetting { enabled: boolean; telegram: boolean; cooldown: n
 export interface Thresholds { cpu: number; cpuMinutes: number; ram: number; ramMinutes: number; disk: number; sshBrute: number }
 export interface SettingsT {
   telegram: { token: string; chatId: string; prefix: boolean; commands: boolean }
+  portScan: PortScanSettings
   thresholds: Thresholds
   events: Record<string, EventSetting>
   watchServices: string[]
@@ -113,6 +114,9 @@ export interface SettingsT {
   fileRoots: FileRoot[]
   terminalOff: boolean
   tokenSet: boolean
+  cfSet: boolean
+  cfMasked: string
+  logRules: LogRule[]
   tokenMasked: string
 }
 export interface VarDef { name: string; desc: string; sample: string }
@@ -134,7 +138,7 @@ export interface FwStatus {
 
 export interface Monitor {
   id: string; name: string; url: string; interval: number; timeout: number; expect: number; keyword: string
-  enabled: boolean; createdAt: number
+  enabled: boolean; createdAt: number; kind?: 'http' | 'oidc'; issuer?: string
 }
 export interface UpBar { ts: number; uptime: number; avgMs: number }
 export interface UpSummary extends Monitor {
@@ -179,3 +183,54 @@ export interface DeployRun {
 }
 export interface DeployItem extends DeployProject { busy: string; last: DeployRun | null; git: { hash?: string; subject?: string; time?: string; remote?: string } }
 export interface TelegramStatus { running: boolean; bot: string; error?: string; lastSeen: number; ignored: number }
+
+// ---- port taramaları ----
+
+export interface PortScanSettings { off: boolean; threshold: number; window: number; autoBan: boolean; banInternet: boolean; banHours: number; whitelist: string[] }
+export interface Scan {
+  id: string; ip: string; cc: string; start: number; end: number; ports: number; sample: string[]; packets: number
+  types: string[]; kind: 'internet' | 'targeted' | 'pending'; reason: string; rdns: string; ssh: boolean; banned: boolean; open: boolean
+}
+export interface IPBan { ip: string; until: number; created: number; reason: string; auto: boolean; by: string }
+export interface ScanResp {
+  report: { scans: Scan[]; internet: number; targeted: number; ips: number; banned: number; hourly: number[]; hourlyInternet: number[]; logRule: string }
+  bans: IPBan[]; settings: PortScanSettings; ufwActive: boolean
+}
+export interface ListenPort {
+  proto: string; port: number; addrs: string[]; program: string; pid: number; exposure: 'open' | 'limited' | 'protected' | 'local'
+  reason: string; docker: boolean; risk?: string; since: number
+}
+
+// ---- web saldırıları ----
+
+export interface WebIP {
+  ip: string; cc: string; requests: number; attacks: number; notFound: number; cats: Record<string, number>; sites: string[] | null
+  paths: string[] | null; ua: string; first: number; last: number; blocked: '' | 'cloudflare' | 'firewall'
+}
+export interface WebHit { ts: number; ip: string; cc: string; method: string; path: string; status: number; cats: string[]; site: string }
+export interface WebFinding { site: string; path: string; status: number; bytes: number; count: number; last: number; confirmed: boolean; url: string; note: string }
+export interface RealIPStatus { nginx: boolean; configured: boolean; header: string; from: number; kokpit: boolean; tunnel: boolean; localShare: number; confd: boolean; problems?: string[] }
+export interface WebResp {
+  report: {
+    range: string; generated: number; requests: number; attacks: number; attackIps: number; cats: Record<string, number>
+    catNames: Record<string, string>; sites: Record<string, number>; topIps: WebIP[]; recent: WebHit[]; hourly: number[]
+    findings: WebFinding[]; files: string[] | null; localShare: number
+  }
+  realip: RealIPStatus; cloudflare: boolean
+}
+
+// ---- cloudflare ----
+
+export interface CFZone { id: string; name: string; status: string; plan: string; securityLevel: string }
+export interface CFBan { ip: string; until: number; created: number; reason: string; by: string; rules: Record<string, string> }
+export interface CFResp { enabled: boolean; masked: string; zones?: CFZone[] | null; error?: string; bans: CFBan[] }
+export interface CFEvent { time: string; action: string; ip: string; country: string; host: string; path: string; source: string; ua: string }
+
+// ---- log kuralları ----
+
+export interface LogRule {
+  id: string; name: string; source: 'file' | 'journal' | 'pm2'; path: string; pattern: string; regex: boolean
+  threshold: number; window: number; banHours: number; action: 'auto' | 'cloudflare' | 'firewall' | 'notify'; enabled: boolean
+}
+export interface LogRuleHit { rule: string; ip: string; ts: number; count: number; result: string; blocked: boolean }
+export interface LogRuleTest { lines: number; matches: number; ips: Record<string, number>; samples: string[] | null; unmatched: string[] | null; wouldBan: number }

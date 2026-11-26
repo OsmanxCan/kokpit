@@ -1,6 +1,7 @@
 package server
 
 import (
+	"net"
 	"os"
 
 	"encoding/json"
@@ -33,12 +34,16 @@ type settingsView struct {
 	settings.Settings
 	TokenSet    bool   `json:"tokenSet"`
 	TokenMasked string `json:"tokenMasked"`
+	CFSet       bool   `json:"cfSet"`
+	CFMasked    string `json:"cfMasked"`
 }
 
 func (s *Server) settingsView() settingsView {
 	cur := s.set.Get()
 	v := settingsView{Settings: cur, TokenSet: cur.Telegram.Token != "", TokenMasked: settings.MaskToken(cur.Telegram.Token)}
 	v.Telegram.Token = "" // token asla tarayıcıya gönderilmez
+	v.CFSet, v.CFMasked = cur.CFToken != "", settings.MaskToken(cur.CFToken)
+	v.CFToken = ""
 	return v
 }
 
@@ -65,6 +70,7 @@ type settingsPatch struct {
 	UpdateCheck   *bool                     `json:"updateCheck"`
 	FileRoots     *[]files.Root             `json:"fileRoots"`
 	TerminalOff   *bool                     `json:"terminalOff"`
+	PortScan      *settings.PortScan        `json:"portScan"`
 }
 
 func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
@@ -154,6 +160,38 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if ps := p.PortScan; ps != nil {
+		switch {
+		case ps.Threshold < 5 || ps.Threshold > 1000:
+			writeErr(w, 400, "Port eşiği 5 ile 1000 arasında olmalı")
+			return
+		case ps.Window < 10 || ps.Window > 3600:
+			writeErr(w, 400, "Süre penceresi 10 saniye ile 1 saat arasında olmalı")
+			return
+		case ps.BanHours < 0 || ps.BanHours > 24*365:
+			writeErr(w, 400, "Engelleme süresi 0 (kalıcı) ile 8760 saat arasında olmalı")
+			return
+		case len(ps.Whitelist) > 200:
+			writeErr(w, 400, "Beyaz liste en fazla 200 kayıt olabilir")
+			return
+		}
+		wl := []string{}
+		for _, x := range ps.Whitelist {
+			x = strings.TrimSpace(x)
+			if x == "" {
+				continue
+			}
+			if net.ParseIP(x) == nil {
+				if _, _, err := net.ParseCIDR(x); err != nil {
+					writeErr(w, 400, "Beyaz listede geçersiz kayıt: "+x)
+					return
+				}
+			}
+			wl = append(wl, x)
+		}
+		ps.Whitelist = wl
+	}
+
 	err := s.set.Update(func(c *settings.Settings) {
 		if t := p.Telegram; t != nil {
 			if t.ClearToken {
@@ -206,6 +244,10 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 				ns = append(ns, r.Path)
 			}
 			changed = append(changed, "dosya klasörleri ("+strings.Join(ns, ", ")+")")
+		}
+		if p.PortScan != nil {
+			c.PortScan = *p.PortScan
+			changed = append(changed, "port tarama ayarları")
 		}
 		if p.TerminalOff != nil {
 			c.TerminalOff = *p.TerminalOff
